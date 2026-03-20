@@ -80,6 +80,8 @@ export default function defineAppConfig({ config }: ConfigContext): ExpoConfig {
       'expo-notifications',
       'expo-secure-store',
       'expo-localization',
+      './plugins/withAndroidFirebaseNativeSetup',
+      './plugins/withIosPushConfiguration',
       [
         'expo-build-properties',
         {
