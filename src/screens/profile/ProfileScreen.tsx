@@ -20,6 +20,7 @@ import {
   LogOut,
   ChevronRight,
   CheckCircle,
+  Bell,
 } from 'lucide-react-native';
 
 import { useAuthStore } from '@/store/authStore';
@@ -32,6 +33,8 @@ import { DIDMetadata, Language } from '@/types';
 import Modal from '@/components/Modal';
 import PinPad from '@/components/PinPad';
 import { didService } from '@/services/didService';
+import { useNotificationStore } from '@/store/notificationStore';
+import { pushNotificationService } from '@/services/pushNotificationService';
 
 const LANGUAGES: { code: Language; label: string; flag: string }[] = [
   { code: 'en', label: 'English', flag: '🇬🇧' },
@@ -45,6 +48,7 @@ const LANGUAGES: { code: Language; label: string; flag: string }[] = [
 export default function ProfileScreen() {
   const { colors } = useTheme();
   const { user, updateUser, logout, updateCloudSync, cloudSync } = useAuthStore();
+  const devicePushToken = useNotificationStore((s) => s.devicePushToken);
   const { clearWallet } = useWalletStore();
   const { theme, toggleTheme, language, setLanguage } = useSettingsStore();
   const [didMetadata, setDidMetadata] = useState<DIDMetadata | null>(null);
@@ -210,6 +214,48 @@ export default function ProfileScreen() {
     }
   }
 
+  async function handleCopyPushToken() {
+    const token = devicePushToken;
+    if (!token) {
+      Alert.alert('No Push Token', 'Native device push token is not available yet. Please use a supported device and grant notification permission.');
+      return;
+    }
+    await Clipboard.setStringAsync(token);
+    Alert.alert('Push Token Copied', token);
+  }
+
+  async function handleScheduleDemoNotification() {
+    try {
+      await pushNotificationService.scheduleLocalDemoNotification();
+      Alert.alert('Demo Scheduled', 'A local demo notification will appear in 5 seconds.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      Alert.alert('Schedule Failed', message);
+    }
+  }
+
+  async function handleRefreshPushToken() {
+    try {
+      const result = await pushNotificationService.registerForPushNotifications();
+      Alert.alert(
+        'Push Token Result',
+        [
+          `devicePushToken: ${result.devicePushToken ?? 'null'}`,
+          `error: ${result.error ?? 'null'}`,
+          `permissionStatus: ${result.permissionStatus}`,
+          `platform: ${result.platform}`,
+          `isDevice: ${String(result.isDevice)}`,
+          `rawTokenData: ${result.rawTokenData ?? 'null'}`,
+          '当前项目已移除 Expo Push Token，仅使用原生 FCM/APNs token。',
+          '如果这里仍然是 null，通常是通知权限未开、iOS Push Capability 未生效，或者需要重新安装包含最新原生配置的构建包。',
+        ].join('\n\n')
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      Alert.alert('Refresh Failed', message);
+    }
+  }
+
   async function logDidPrivateKeyToConsole(keyId: string) {
     try {
       const locationHint = didService.getPrivateKeyLocationHint(keyId);
@@ -226,6 +272,9 @@ export default function ProfileScreen() {
     { icon: <User color={COLORS.euBlue} size={20} />, label: 'Personal Information', onPress: () => openModal('personal') },
     { icon: <Shield color={COLORS.euBlue} size={20} />, label: 'Security', onPress: () => openModal('security') },
     { icon: <Shield color={COLORS.euBlue} size={20} />, label: 'Export DID Document', onPress: handleExportDidDocument, value: didMetadata ? `${didMetadata.did.slice(0, 18)}...` : 'Not generated' },
+    { icon: <Bell color={COLORS.euBlue} size={20} />, label: 'Copy Push Token', onPress: () => void handleCopyPushToken(), value: devicePushToken ? `${devicePushToken.slice(0, 14)}...` : 'Unavailable' },
+    { icon: <Bell color={COLORS.euBlue} size={20} />, label: 'Refresh Push Token', onPress: () => void handleRefreshPushToken() },
+    { icon: <Bell color={COLORS.euBlue} size={20} />, label: 'Schedule Demo Notification', onPress: () => void handleScheduleDemoNotification() },
     { icon: <Globe color={COLORS.euBlue} size={20} />, label: 'Language', onPress: () => openModal('language'), value: LANGUAGES.find((l) => l.code === language)?.label },
     { icon: <Moon color={COLORS.euBlue} size={20} />, label: 'Dark Mode', onPress: toggleTheme, value: theme === 'dark' ? 'On' : 'Off' },
     { icon: <Cloud color={COLORS.euBlue} size={20} />, label: 'Cloud Backup', onPress: () => openModal('cloud'), value: cloudSync.enabled ? 'Enabled' : 'Not set up' },

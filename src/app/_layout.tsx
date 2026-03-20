@@ -6,29 +6,35 @@ import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 
 import { useAuthStore } from '@/store/authStore';
+import { useNotificationStore } from '@/store/notificationStore';
 import { useWalletStore } from '@/store/walletStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useInactivityTimer } from '@/hooks/useInactivityTimer';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useTheme } from '@/hooks/useTheme';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import RootNavigator from '@/navigation/RootNavigator';
 
 export default function RootLayout() {
   const hydrateAuth = useAuthStore((s) => s.hydrate);
+  const hydrateNotifications = useNotificationStore((s) => s.hydrate);
   const hydrateWallet = useWalletStore((s) => s.hydrate);
   const hydrateSettings = useSettingsStore((s) => s.hydrate);
 
   const authHydrated = useAuthStore((s) => s.isHydrated);
+  const notificationHydrated = useNotificationStore((s) => s.isHydrated);
   const walletHydrated = useWalletStore((s) => s.isHydrated);
   const settingsHydrated = useSettingsStore((s) => s.isHydrated);
+  const isOnboarded = useAuthStore((s) => s.isOnboarded);
 
-  const allHydrated = authHydrated && walletHydrated && settingsHydrated;
+  const allHydrated = authHydrated && notificationHydrated && walletHydrated && settingsHydrated;
 
   const { isDark } = useTheme();
   const inactivityTimer = useInactivityTimer();
+  usePushNotifications(allHydrated && isOnboarded);
 
   useEffect(() => {
-    Promise.all([hydrateAuth(), hydrateWallet(), hydrateSettings()]);
+    Promise.all([hydrateAuth(), hydrateNotifications(), hydrateWallet(), hydrateSettings()]);
   }, []);
 
   if (!allHydrated) {

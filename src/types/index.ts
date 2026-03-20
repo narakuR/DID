@@ -100,6 +100,25 @@ export interface DIDMetadata {
   status: 'active' | 'rotated' | 'deactivated';
 }
 
+export type PushNotificationCategory =
+  | 'CREDENTIAL_EXPIRY'
+  | 'CREDENTIAL_REVOKED'
+  | 'CREDENTIAL_ISSUED'
+  | 'VERIFICATION_REQUEST'
+  | 'SYSTEM'
+  | 'BACKUP_REMINDER';
+
+export interface PushNotificationRecord {
+  id: string;
+  category: PushNotificationCategory;
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+  receivedAt: string;
+  isRead: boolean;
+  actionTaken?: string;
+}
+
 export type Language = 'en' | 'zh' | 'es' | 'fr' | 'pt' | 'ar';
 
 export type Theme = 'light' | 'dark';

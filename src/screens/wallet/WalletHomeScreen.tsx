@@ -17,6 +17,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useWalletStore } from '@/store/walletStore';
 import { useAuthStore } from '@/store/authStore';
+import { useNotificationStore } from '@/store/notificationStore';
 import { RootStackParamList } from '@/navigation/types';
 import { VerifiableCredential, IssuerType } from '@/types';
 import { getCredentialStatus } from '@/utils/credentialUtils';
@@ -48,12 +49,7 @@ export default function WalletHomeScreen() {
   const listRef = useRef<FlatList<any>>(null);
 
   // Notification badge count
-  const badgeCount = useMemo(() => {
-    return credentials.filter((c) => {
-      const s = getCredentialStatus(c);
-      return s.isExpired || s.isNearExpiry || s.isRevoked;
-    }).length;
-  }, [credentials]);
+  const badgeCount = useNotificationStore((s) => s.unreadCount);
 
   // Filtered credentials
   const filteredCredentials = useMemo(() => {

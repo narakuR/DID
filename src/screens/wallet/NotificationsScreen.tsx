@@ -11,9 +11,8 @@ import { ArrowLeft, Bell } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-import { useWalletStore } from '@/store/walletStore';
-import { getCredentialStatus } from '@/utils/credentialUtils';
-import { AppNotification } from '@/types';
+import { useNotificationStore } from '@/store/notificationStore';
+import { PushNotificationRecord } from '@/types';
 import { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/hooks/useTheme';
 import NotificationItem from '@/components/NotificationItem';
@@ -23,48 +22,16 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 export default function NotificationsScreen() {
   const navigation = useNavigation<Nav>();
   const { colors } = useTheme();
-  const credentials = useWalletStore((s) => s.credentials);
+  const notifications = useNotificationStore((s) => s.notifications);
+  const markAllAsRead = useNotificationStore((s) => s.markAllAsRead);
 
-  const notifications = useMemo<AppNotification[]>(() => {
-    const list: AppNotification[] = [];
-    for (const c of credentials) {
-      const s = getCredentialStatus(c);
-      const name = c.visual?.title ?? c.type[0];
-      if (s.isRevoked) {
-        list.push({
-          id: `revoked-${c.id}`,
-          type: 'error',
-          title: `${name} has been revoked`,
-          description: 'This credential is no longer valid.',
-          credentialId: c.id,
-          credentialName: name,
-        });
-      } else if (s.isExpired) {
-        list.push({
-          id: `expired-${c.id}`,
-          type: 'error',
-          title: `${name} has expired`,
-          description: `This credential expired on ${new Date(c.expirationDate).toLocaleDateString()}. Renew it to continue using it.`,
-          credentialId: c.id,
-          credentialName: name,
-        });
-      } else if (s.isNearExpiry) {
-        list.push({
-          id: `near-${c.id}`,
-          type: 'warning',
-          title: `${name} expiring soon`,
-          description: `This credential expires in ${s.daysUntilExpiry} days. Consider renewing it.`,
-          credentialId: c.id,
-          credentialName: name,
-        });
-      }
-    }
-    return list;
-  }, [credentials]);
-
-  function handleRenew(credentialId: string) {
-    navigation.navigate('Renewal', { credentialId });
-  }
+  const sortedNotifications = useMemo<PushNotificationRecord[]>(
+    () =>
+      [...notifications].sort(
+        (left, right) => new Date(right.receivedAt).getTime() - new Date(left.receivedAt).getTime()
+      ),
+    [notifications]
+  );
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -73,14 +40,16 @@ export default function NotificationsScreen() {
           <ArrowLeft color={colors.text} size={24} />
         </TouchableOpacity>
         <Text style={[styles.title, { color: colors.text }]}>Notifications</Text>
-        <View style={styles.backButton} />
+        <TouchableOpacity onPress={() => void markAllAsRead()} style={styles.markAllButton}>
+          <Text style={[styles.markAllText, { color: colors.textSecondary }]}>Mark all read</Text>
+        </TouchableOpacity>
       </View>
 
       <FlatList
-        data={notifications}
+        data={sortedNotifications}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <NotificationItem notification={item} onRenew={handleRenew} />
+          <NotificationItem notification={item} />
         )}
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
@@ -88,7 +57,7 @@ export default function NotificationsScreen() {
             <Bell color={colors.textSecondary} size={48} />
             <Text style={[styles.emptyTitle, { color: colors.text }]}>No notifications</Text>
             <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-              Your credentials are all up to date
+              Firebase or local demo notifications will appear here
             </Text>
           </View>
         }
@@ -110,6 +79,14 @@ const styles = StyleSheet.create({
   },
   backButton: {
     width: 40,
+  },
+  markAllButton: {
+    minWidth: 90,
+    alignItems: 'flex-end',
+  },
+  markAllText: {
+    fontSize: 13,
+    fontWeight: '500',
   },
   title: {
     fontSize: 18,

@@ -36,6 +36,8 @@ export const STORAGE_KEYS = {
   ACTIVITY_LOGS: '@did_wallet/activity_logs',
   DID_METADATA: '@did_wallet/did_metadata',
   DID_DOCUMENT: '@did_wallet/did_document',
+  DEVICE_PUSH_TOKEN: '@did_wallet/device_push_token',
+  NOTIFICATIONS: '@did_wallet/notifications',
 } as const;
 
 export const SECURE_STORE_KEYS = {
