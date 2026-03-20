@@ -34,9 +34,12 @@ export const STORAGE_KEYS = {
   AUTH_STATE: '@did_wallet/auth_state',
   SETTINGS: '@did_wallet/settings',
   ACTIVITY_LOGS: '@did_wallet/activity_logs',
+  DID_METADATA: '@did_wallet/did_metadata',
+  DID_DOCUMENT: '@did_wallet/did_document',
 } as const;
 
 export const SECURE_STORE_KEYS = {
   PIN: 'did_wallet_pin',
   CLOUD_KEY: 'did_wallet_cloud_key',
+  DID_PRIVATE_KEY_PREFIX: 'did_wallet_did_pk_',
 } as const;

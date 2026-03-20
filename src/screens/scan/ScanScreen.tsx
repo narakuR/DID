@@ -11,7 +11,7 @@ import {
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { X, Camera } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { useNavigation } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useWalletStore } from '@/store/walletStore';
@@ -29,6 +29,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function ScanScreen() {
   const navigation = useNavigation<Nav>();
+  const isFocused = useIsFocused();
   const { colors } = useTheme();
   const { addCredential } = useWalletStore();
   const [permission, requestPermission] = useCameraPermissions();
@@ -67,6 +68,14 @@ export default function ScanScreen() {
     }
   }, [processing]);
 
+  useEffect(() => {
+    if (!isFocused) return;
+
+    if (!permission || permission.status === 'undetermined') {
+      void requestPermission();
+    }
+  }, [isFocused, permission, requestPermission]);
+
   async function handleDemo() {
     setProcessing(true);
     await new Promise((r) => setTimeout(r, 1500));
@@ -95,6 +104,7 @@ export default function ScanScreen() {
   }
 
   const hasPermission = permission?.granted;
+  const shouldRenderCamera = isFocused && hasPermission;
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: '#000000' }]}>
@@ -109,7 +119,7 @@ export default function ScanScreen() {
 
       {/* Camera / Demo */}
       <View style={styles.cameraContainer}>
-        {hasPermission ? (
+        {shouldRenderCamera ? (
           <CameraView
             style={StyleSheet.absoluteFill}
             facing="back"
@@ -125,14 +135,18 @@ export default function ScanScreen() {
           <View style={[styles.demoPlaceholder, { backgroundColor: colors.surface }]}>
             <Camera color={colors.textSecondary} size={48} />
             <Text style={[styles.demoText, { color: colors.textSecondary }]}>
-              {permission?.canAskAgain
+              {!permission
+                ? 'Requesting camera permission...'
+                : permission?.canAskAgain
                 ? 'Camera access needed to scan QR codes'
                 : 'Camera permission denied. Enable in Settings.'}
             </Text>
             {permission?.canAskAgain && (
               <TouchableOpacity
                 style={styles.grantButton}
-                onPress={requestPermission}
+                onPress={() => {
+                  void requestPermission();
+                }}
               >
                 <Text style={styles.grantButtonText}>Grant Access</Text>
               </TouchableOpacity>
@@ -175,7 +189,7 @@ export default function ScanScreen() {
       </View>
 
       {/* Demo button */}
-      {!hasPermission && !processing && (
+      {!shouldRenderCamera && !processing && (
         <View style={styles.demoButtonContainer}>
           <TouchableOpacity
             style={styles.demoButton}

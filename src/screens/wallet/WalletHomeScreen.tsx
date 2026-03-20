@@ -306,7 +306,7 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     paddingHorizontal: 16,
-    paddingBottom: 10,
+    paddingBottom: 6,
   },
   listContainer: {
     flex: 1,

@@ -1,32 +1,31 @@
-import React, { useState, useRef } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  Animated,
-  Alert,
-} from 'react-native';
-import { ArrowLeft, Info, CheckCircle, XCircle, QrCode, X } from 'lucide-react-native';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { ArrowLeft, CheckCircle, Info, QrCode, XCircle } from 'lucide-react-native';
+import React, { useRef, useState } from 'react';
+import {
+  Animated,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 
+import ActivityLogItem from '@/components/ActivityLogItem';
+import CredentialCard from '@/components/CredentialCard';
+import { DataRow, DataSection } from '@/components/DataSection';
+import LoadingOverlay from '@/components/LoadingOverlay';
+import Modal from '@/components/Modal';
+import { COLORS } from '@/constants/colors';
+import { MOCK_ACTIVITY_LOGS } from '@/constants/mockData';
+import { useTheme } from '@/hooks/useTheme';
+import { RootStackParamList } from '@/navigation/types';
+import { biometricService } from '@/services/biometricService';
+import { geminiService } from '@/services/geminiService';
 import { useWalletStore } from '@/store/walletStore';
 import { getCredentialStatus } from '@/utils/credentialUtils';
-import { RootStackParamList } from '@/navigation/types';
-import { MOCK_ACTIVITY_LOGS } from '@/constants/mockData';
-import { geminiService } from '@/services/geminiService';
-import { biometricService } from '@/services/biometricService';
-import { useTheme } from '@/hooks/useTheme';
-import { COLORS } from '@/constants/colors';
-import CredentialCard from '@/components/CredentialCard';
-import { DataSection, DataRow } from '@/components/DataSection';
-import ActivityLogItem from '@/components/ActivityLogItem';
-import Modal from '@/components/Modal';
-import LoadingOverlay from '@/components/LoadingOverlay';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'CredentialDetail'>;
@@ -128,7 +127,11 @@ export default function CredentialDetailScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Card */}
         <CredentialCard credential={credential} showStatus />
 
@@ -286,6 +289,9 @@ export default function CredentialDetailScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  scroll: {
+    flex: 1,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

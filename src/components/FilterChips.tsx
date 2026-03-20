@@ -1,7 +1,7 @@
-import React from 'react';
-import { ScrollView, TouchableOpacity, Text, StyleSheet } from 'react-native';
-import { useTheme } from '@/hooks/useTheme';
 import { COLORS } from '@/constants/colors';
+import { useTheme } from '@/hooks/useTheme';
+import React from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity } from 'react-native';
 
 interface FilterChipsProps {
   options: string[];
@@ -16,6 +16,7 @@ export default function FilterChips({ options, selected, onSelect }: FilterChips
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
+      style={styles.scroll}
       contentContainerStyle={styles.container}
     >
       {options.map((option) => {
@@ -48,20 +49,27 @@ export default function FilterChips({ options, selected, onSelect }: FilterChips
 }
 
 const styles = StyleSheet.create({
+  scroll: {
+    flexGrow: 0,
+    flexShrink: 0,
+  },
   container: {
     paddingHorizontal: 16,
+    paddingVertical: 0,
     gap: 8,
     flexDirection: 'row',
     alignItems: 'center',
+    flexGrow: 0,
   },
   chip: {
     borderWidth: 1,
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
   },
   label: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '500',
+    lineHeight: 16,
   },
 });

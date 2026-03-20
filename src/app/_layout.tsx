@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { TouchableWithoutFeedback, View } from 'react-native';
+import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -46,11 +46,15 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <StatusBar style={isDark ? 'light' : 'dark'} />
-        <TouchableWithoutFeedback onPress={inactivityTimer.resetTimer}>
-          <View style={{ flex: 1 }}>
-            <RootNavigator />
-          </View>
-        </TouchableWithoutFeedback>
+        <View
+          style={{ flex: 1 }}
+          onStartShouldSetResponderCapture={() => {
+            inactivityTimer.resetTimer();
+            return false;
+          }}
+        >
+          <RootNavigator />
+        </View>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

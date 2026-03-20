@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import {
   ShieldCheck,
   Fingerprint,
@@ -29,6 +30,7 @@ import { COLORS } from '@/constants/colors';
 import { CONFIG } from '@/constants/config';
 import { MOCK_CREDENTIALS } from '@/constants/mockData';
 import { AuthMethod, UserProfile } from '@/types';
+import { didService } from '@/services/didService';
 import PinPad from '@/components/PinPad';
 import LoadingOverlay from '@/components/LoadingOverlay';
 
@@ -205,14 +207,65 @@ export default function OnboardingScreen() {
   }
 
   async function handleEnterWallet() {
-    const profile: UserProfile = {
-      id: `user-${Date.now()}`,
-      nickname: 'User',
-      phone,
-      authMethod: selectedAuth,
-      createdAt: new Date().toISOString(),
-    };
-    await completeOnboarding(profile);
+    try {
+      setLoadingMessage('Generating DID key pair…');
+      setLoading(true);
+
+      const didResult = await didService.ensureDIDKeyPair();
+      await didService.exportDIDDocumentToDevice();
+
+      const profile: UserProfile = {
+        id: `user-${Date.now()}`,
+        nickname: 'User',
+        phone,
+        authMethod: selectedAuth,
+        createdAt: new Date().toISOString(),
+      };
+      await completeOnboarding(profile);
+
+      const locationHint = didService.getPrivateKeyLocationHint(didResult.metadata.keyId);
+      Alert.alert(
+        'DID 密钥已生成',
+        [
+          `DID: ${didResult.did}`,
+          didResult.isNew ? '公钥 DID 文档已弹出系统分享窗口，可保存到手机“文件”或发送到其他应用。' : '已检测到现有 DID，已重新弹出公钥文档导出窗口。',
+          `私钥存储键名：${locationHint.storeKey}`,
+          '私钥不会出现在应用界面，也不会作为文件导出。',
+        ].join('\n\n'),
+        [
+          {
+            text: '复制私钥键名',
+            onPress: () => {
+              Clipboard.setStringAsync(locationHint.storeKey);
+            },
+          },
+          {
+            text: '输出到控制台',
+            onPress: () => {
+              void logDidPrivateKeyToConsole(didResult.metadata.keyId);
+            },
+          },
+          { text: '确定' },
+        ]
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      Alert.alert('DID 生成失败', message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function logDidPrivateKeyToConsole(keyId: string) {
+    try {
+      const locationHint = didService.getPrivateKeyLocationHint(keyId);
+      const value = await didService.getStoredPrivateKeyValue(keyId);
+      console.log('[DID Private Key]', { key: locationHint.storeKey, value });
+      Alert.alert('已输出到控制台', '私钥键值对已输出到控制台日志。');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      Alert.alert('读取私钥失败', message);
+    }
   }
 
   const content = () => {

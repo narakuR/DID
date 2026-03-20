@@ -64,6 +64,42 @@ export interface CloudSyncState {
 
 export type AuthMethod = 'BIO' | 'PIN';
 
+export type DIDMethod = 'did:key' | 'did:ebsi' | 'did:ion';
+
+export type KeyAlgorithm = 'Ed25519' | 'ES256K' | 'P-256';
+
+export interface DIDPrivateKeyRecord {
+  keyId: string;
+  algorithm: KeyAlgorithm;
+  privateKeyBase64: string;
+  createdAt: string;
+}
+
+export interface DIDDocument {
+  '@context': ['https://www.w3.org/ns/did/v1', ...string[]];
+  id: string;
+  verificationMethod: {
+    id: string;
+    type: 'Ed25519VerificationKey2020' | 'EcdsaSecp256k1VerificationKey2019';
+    controller: string;
+    publicKeyMultibase: string;
+  }[];
+  authentication: string[];
+  assertionMethod: string[];
+  created: string;
+  updated: string;
+}
+
+export interface DIDMetadata {
+  did: string;
+  method: DIDMethod;
+  algorithm: KeyAlgorithm;
+  keyId: string;
+  publicKeyMultibase: string;
+  registeredAt: string;
+  status: 'active' | 'rotated' | 'deactivated';
+}
+
 export type Language = 'en' | 'zh' | 'es' | 'fr' | 'pt' | 'ar';
 
 export type Theme = 'light' | 'dark';

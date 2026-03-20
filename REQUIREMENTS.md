@@ -1,8 +1,9 @@
 # EU Digital Identity Wallet — 移动端需求文档
 
-> **版本**: 1.0
-> **日期**: 2026-03-18
+> **版本**: 1.1
+> **日期**: 2026-03-19
 > **技术栈**: React Native + Expo + Expo Development Build（不使用 EAS 服务）
+> **变更说明**: v1.1 新增「DID 密钥对管理」与「双端推送通知」两项核心功能规格
 
 ---
 
@@ -23,6 +24,8 @@
 13. [持久化存储策略](#13-持久化存储策略)
 14. [构建与运行配置](#14-构建与运行配置)
 15. [Mock 数据规格](#15-mock-数据规格)
+16. [DID 密钥对生成与管理](#16-did-密钥对生成与管理)
+17. [双端推送通知系统](#17-双端推送通知系统)
 
 ---
 
@@ -128,6 +131,23 @@ expo-status-bar                     # 状态栏控制
 @expo/vector-icons                  # 备用图标
 ```
 
+#### 推送通知
+
+```
+expo-notifications ^0.x             # 本地 + 远程推送通知
+expo-device                         # 检测物理设备（模拟器不支持推送）
+```
+
+#### DID 密钥学
+
+```
+react-native-quick-crypto ^0.x      # 原生加速的 Web Crypto 兼容层（支持 Ed25519 / ECDSA）
+@noble/ed25519 ^2.x                 # 纯 JS Ed25519 实现（JS fallback）
+@noble/secp256k1 ^2.x               # secp256k1 曲线（EBSI 兼容）
+did-resolver ^4.x                   # W3C DID 解析器接口
+@decentralized-identity/ion-tools   # 可选：ION/Sidetree DID 方法支持
+```
+
 #### AI 服务
 
 ```
@@ -150,6 +170,13 @@ babel-plugin-module-resolver        # 路径别名
 ```typescript
 // .env
 EXPO_PUBLIC_GEMINI_API_KEY=your_key_here
+
+# ★ DID 后端服务
+EXPO_PUBLIC_DID_REGISTRY_URL=https://api.your-did-registry.example.com
+EXPO_PUBLIC_DID_REGISTRY_API_KEY=your_registry_api_key
+
+# ★ 推送通知后端
+EXPO_PUBLIC_PUSH_SERVER_URL=https://push.your-backend.example.com
 ```
 
 ### 2.4 Expo 配置要求（app.config.ts）
@@ -174,13 +201,35 @@ export default {
         "android.permission.CAMERA",
         "android.permission.USE_BIOMETRIC",
         "android.permission.USE_FINGERPRINT",
-      ]
+        // ★ 推送通知所需权限
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+        "android.permission.POST_NOTIFICATIONS",
+      ],
+      googleServicesFile: "./google-services.json",  // ★ FCM 配置
+    },
+
+    // iOS 额外配置
+    infoPlist: {
+      NSCameraUsageDescription: "扫描凭证二维码",
+      NSFaceIDUsageDescription: "使用 Face ID 解锁钱包",
     },
 
     plugins: [
       "expo-camera",
       "expo-local-authentication",
       "expo-secure-store",
+      // ★ 推送通知插件
+      [
+        "expo-notifications",
+        {
+          icon: "./assets/notification-icon.png",
+          color: "#003399",
+          sounds: ["./assets/notification.wav"],
+          androidMode: "default",
+          androidCollapsedTitle: "EU Wallet",
+        }
+      ],
       [
         "expo-build-properties",
         {
@@ -248,17 +297,23 @@ src/
 ├── store/                        # Zustand stores
 │   ├── authStore.ts
 │   ├── walletStore.ts
-│   └── settingsStore.ts         # 主题 + 语言
+│   ├── settingsStore.ts         # 主题 + 语言
+│   ├── didStore.ts              # ★ DID 标识符 + 密钥元数据状态
+│   └── notificationStore.ts     # ★ 推送令牌 + 通知列表状态
 │
 ├── services/
 │   ├── geminiService.ts         # AI 服务
 │   ├── biometricService.ts      # 生物识别封装
-│   └── storageService.ts        # AsyncStorage 封装
+│   ├── storageService.ts        # AsyncStorage 封装
+│   ├── didService.ts            # ★ DID 生成、密钥对管理、DID 文档上传
+│   └── pushNotificationService.ts  # ★ 推送令牌注册、通知调度、后台处理
 │
 ├── hooks/
 │   ├── useInactivityTimer.ts    # 5分钟自动锁定
 │   ├── useBiometric.ts
-│   └── useTranslation.ts
+│   ├── useTranslation.ts
+│   ├── useDID.ts                # ★ DID 状态与操作 Hook
+│   └── usePushNotifications.ts  # ★ 推送权限与令牌 Hook
 │
 ├── i18n/
 │   ├── index.ts                 # i18n 初始化
@@ -381,6 +436,93 @@ export type CredentialStatusInfo = {
   isRevoked: boolean;
   daysUntilExpiry?: number; // 正数=未过期，负数=已过期
 };
+```
+
+### 4.5 ★ DIDKeyPair（DID 密钥对，核心安全数据）
+
+```typescript
+export type DIDMethod = 'did:key' | 'did:ebsi' | 'did:ion';
+export type KeyAlgorithm = 'Ed25519' | 'ES256K' | 'P-256';
+
+/**
+ * 本地存储（SecureStore）——仅含私钥原始字节的 Base64 编码
+ * 绝不包含公钥或 DID，防止意外关联泄露
+ */
+export interface DIDPrivateKeyRecord {
+  keyId: string;            // 唯一标识，格式：did:key:<thumbprint>#<fragment>
+  algorithm: KeyAlgorithm;
+  privateKeyBase64: string; // Base64url 编码的私钥原始字节（由 SecureStore 加密保存）
+  createdAt: string;        // ISO 8601
+}
+
+/**
+ * 后端存储（DID Registry） + 本地元数据缓存（AsyncStorage）
+ * 不含私钥，仅含公开信息
+ */
+export interface DIDDocument {
+  '@context': ['https://www.w3.org/ns/did/v1', ...string[]];
+  id: string;               // DID 标识符，e.g. did:key:z6Mk...
+  verificationMethod: Array<{
+    id: string;             // {did}#keys-1
+    type: 'Ed25519VerificationKey2020' | 'EcdsaSecp256k1VerificationKey2019';
+    controller: string;     // 同 id.did
+    publicKeyMultibase: string;  // 多基编码的公钥（Base58btc 前缀 z）
+  }>;
+  authentication: string[];        // 引用 verificationMethod id
+  assertionMethod: string[];
+  created: string;                 // ISO 8601
+  updated: string;
+}
+
+/**
+ * 本地轻量缓存（AsyncStorage）——公开元数据，不含私钥
+ */
+export interface DIDMetadata {
+  did: string;              // 完整 DID 字符串
+  method: DIDMethod;
+  algorithm: KeyAlgorithm;
+  keyId: string;            // 对应 DIDPrivateKeyRecord.keyId
+  publicKeyMultibase: string;
+  registeredAt: string;     // ISO 8601，上传到后端的时间
+  status: 'active' | 'rotated' | 'deactivated';
+}
+```
+
+### 4.6 ★ PushNotificationRecord（推送通知记录）
+
+```typescript
+export type PushNotificationCategory =
+  | 'CREDENTIAL_EXPIRY'   // 凭证即将到期
+  | 'CREDENTIAL_REVOKED'  // 凭证被撤销
+  | 'CREDENTIAL_ISSUED'   // 新凭证待接收
+  | 'VERIFICATION_REQUEST'// 身份验证请求
+  | 'SYSTEM'              // 系统公告
+  | 'BACKUP_REMINDER';    // 云备份提醒
+
+export interface PushNotificationRecord {
+  id: string;
+  category: PushNotificationCategory;
+  title: string;
+  body: string;
+  data?: Record<string, any>;    // 深度链接所需的结构化载荷
+  receivedAt: string;            // ISO 8601
+  isRead: boolean;
+  actionTaken?: string;          // e.g. 'renewed', 'dismissed'
+}
+
+/**
+ * 存储在后端的设备令牌记录（服务端数据结构参考）
+ */
+export interface DevicePushToken {
+  userId: string;          // DID 作为用户标识
+  platform: 'ios' | 'android';
+  expoPushToken: string;   // Expo 推送令牌格式：ExponentPushToken[...]
+  fcmToken?: string;       // Android FCM 原生令牌（备用）
+  apnsToken?: string;      // iOS APNs 原生令牌（备用）
+  registeredAt: string;
+  lastActiveAt: string;
+  appVersion: string;
+}
 ```
 
 ---
@@ -1383,21 +1525,40 @@ export const verifyCredentialIntegrity = async (credential: VerifiableCredential
 - 备份数据使用用户设置的密码加密（AES-256，使用 `expo-crypto`）
 - 密码/密钥存储在 SecureStore，备份文件存储在云端（Demo 中模拟）
 
+### 12.5 ★ DID 私钥安全
+
+- DID 私钥 **只存** SecureStore，访问级别设为 `requireAuthentication: true`
+- 禁止将私钥写入日志、剪贴板、AsyncStorage 或任何非加密存储
+- 云备份中的私钥必须使用 AES-256-GCM 加密，密钥派生使用 PBKDF2（迭代 >= 100,000）
+- 每个 DID 密钥对使用独立的 SecureStore 键名，防止批量泄露
+- 当用户「登出并删除数据」时，必须调用 `SecureStore.deleteItemAsync` 清除所有 DID 私钥
+
+### 12.6 ★ 推送通知安全
+
+- 推送令牌（Expo Push Token）与 DID 的绑定关系在后端使用加密存储
+- 后端推送接口必须通过服务间认证（JWT 或 API Key），不对外公开
+- 通知 payload 不得包含凭证私密内容（如完整凭证 JSON），只携带凭证 ID 和操作指令
+- APNs / FCM 通信强制使用 TLS；Expo Push API 通信同样使用 HTTPS
+
 ---
 
 ## 13. 持久化存储策略
 
 
-| 数据                   | 存储位置                | 加密          |
-| -------------------- | ------------------- | ----------- |
-| PIN 码                | `expo-secure-store` | ✅ OS 级别     |
-| 云备份密钥                | `expo-secure-store` | ✅ OS 级别     |
-| 用户信息（nickname、phone） | `AsyncStorage`      | ❌           |
-| 认证方式                 | `AsyncStorage`      | ❌           |
-| 云同步状态                | `AsyncStorage`      | ❌           |
-| 钱包凭证列表               | `AsyncStorage`      | ❌（生产环境建议加密） |
-| 主题设置                 | `AsyncStorage`      | ❌           |
-| 语言设置                 | `AsyncStorage`      | ❌           |
+| 数据                        | 存储位置                | 加密              |
+| ------------------------- | ------------------- | --------------- |
+| PIN 码                     | `expo-secure-store` | ✅ OS 级别         |
+| 云备份密钥                     | `expo-secure-store` | ✅ OS 级别         |
+| **★ DID 私钥（privateKeyBase64）** | `expo-secure-store` | ✅ OS 级别（Keychain/Keystore） |
+| 用户信息（nickname、phone）      | `AsyncStorage`      | ❌              |
+| 认证方式                      | `AsyncStorage`      | ❌              |
+| 云同步状态                     | `AsyncStorage`      | ❌              |
+| 钱包凭证列表                    | `AsyncStorage`      | ❌（生产环境建议加密）    |
+| 主题设置                      | `AsyncStorage`      | ❌              |
+| 语言设置                      | `AsyncStorage`      | ❌              |
+| **★ DID 元数据（公钥缓存）**       | `AsyncStorage`      | ❌（仅公开信息）       |
+| **★ Expo 推送令牌**            | `AsyncStorage`      | ❌              |
+| **★ 本地通知记录**              | `AsyncStorage`      | ❌              |
 
 
 ### AsyncStorage 键名约定
@@ -1410,6 +1571,19 @@ const STORAGE_KEYS = {
   CREDENTIALS: 'eu_wallet_credentials',
   THEME: 'eu_wallet_theme',
   LANGUAGE: 'eu_wallet_language',
+  // ★ DID 相关
+  DID_METADATA: 'eu_wallet_did_metadata',        // DIDMetadata JSON
+  // ★ 推送通知相关
+  PUSH_TOKEN: 'eu_wallet_push_token',            // Expo Push Token 字符串
+  NOTIFICATIONS: 'eu_wallet_notifications',      // PushNotificationRecord[] JSON
+} as const;
+
+// ★ SecureStore 键名约定（私密数据）
+const SECURE_KEYS = {
+  WALLET_PIN: 'eu_wallet_pin',
+  CLOUD_BACKUP_KEY: 'eu_wallet_cloud_key',
+  // DID 私钥使用 keyId 作为键名，支持多 DID 并存
+  DID_PRIVATE_KEY_PREFIX: 'eu_wallet_did_pk_',  // + keyId 后缀
 } as const;
 ```
 
@@ -1515,6 +1689,635 @@ process.env.EXPO_PUBLIC_GEMINI_API_KEY
 | **Sat** | **8**（高亮蓝色） |
 | Sun     | 2           |
 
+
+---
+
+## 16. DID 密钥对生成与管理
+
+> **核心原则**：私钥永不离开设备；后端只存储公钥与 DID 文档；所有传输使用 TLS + 请求签名双重保护。
+
+### 16.1 功能概述
+
+当用户完成 Onboarding（首次引导）后，系统自动在本地生成一个 Ed25519 密钥对，用于：
+
+1. **构建用户专属 DID**（`did:key` 方法，可选升级为 `did:ebsi`）
+2. **凭证验证签名**：出示凭证时对 VP（Verifiable Presentation）签名
+3. **端对端加密信道**：未来扩展的 DIDComm 消息加密
+
+### 16.2 密钥对生成流程
+
+```
+Onboarding SUCCESS
+       │
+       ▼
+[didService.generateDIDKeyPair()]
+       │
+       ├─ 1. 生成 Ed25519 密钥对（原生 crypto / @noble/ed25519）
+       │      privateKey: Uint8Array (32 bytes)
+       │      publicKey:  Uint8Array (32 bytes)
+       │
+       ├─ 2. 构建 DID 标识符（did:key 方法）
+       │      multicodecPrefix = 0xed01  (Ed25519 公钥前缀)
+       │      multibase = 'z' + Base58btc(multicodecPrefix + publicKey)
+       │      did = 'did:key:' + multibase
+       │
+       ├─ 3. 私钥安全本地存储
+       │      SecureStore.setItemAsync(
+       │        SECURE_KEYS.DID_PRIVATE_KEY_PREFIX + keyId,
+       │        Base64url(privateKey)
+       │      )
+       │      // keyId = did + '#' + multibase
+       │
+       ├─ 4. 构建 DID Document（W3C 标准）
+       │      含 verificationMethod、authentication、assertionMethod
+       │
+       ├─ 5. 上传 DID Document 到后端注册中心
+       │      POST /api/did/register
+       │      Headers: { Authorization: 'Bearer <初始注册令牌>' }
+       │      Body: { didDocument, signature: sign(did, privateKey) }
+       │
+       └─ 6. 本地缓存 DID 元数据（AsyncStorage）
+              DIDMetadata { did, publicKeyMultibase, registeredAt, status }
+```
+
+### 16.3 didService.ts 实现方案
+
+```typescript
+// services/didService.ts
+import * as SecureStore from 'expo-secure-store';
+import { ed25519 } from '@noble/ed25519';
+import { base58btc } from 'multiformats/bases/base58';
+
+// ─── 常量 ────────────────────────────────────────────
+const ED25519_MULTICODEC_PREFIX = new Uint8Array([0xed, 0x01]);
+const REGISTRY_URL = process.env.EXPO_PUBLIC_DID_REGISTRY_URL!;
+
+// ─── 生成密钥对 + DID ────────────────────────────────
+export async function generateDIDKeyPair(): Promise<{
+  did: string;
+  metadata: DIDMetadata;
+}> {
+  // 1. 生成私钥（32字节随机数）
+  const privateKey = ed25519.utils.randomPrivateKey();
+  const publicKey  = await ed25519.getPublicKey(privateKey);
+
+  // 2. 构造 DID key
+  const multicodecKey  = new Uint8Array([...ED25519_MULTICODEC_PREFIX, ...publicKey]);
+  const publicKeyMultibase = 'z' + base58btc.encode(multicodecKey);
+  const did = `did:key:${publicKeyMultibase}`;
+  const keyId = `${did}#${publicKeyMultibase}`;
+
+  // 3. 私钥存入 SecureStore（OS Keychain/Keystore 加密）
+  const privateKeyBase64 = Buffer.from(privateKey).toString('base64url');
+  await SecureStore.setItemAsync(
+    `eu_wallet_did_pk_${keyId}`,
+    privateKeyBase64,
+    {
+      requireAuthentication: true,   // 访问需要生物识别或 PIN
+      authenticationPrompt: '请验证身份以访问 DID 密钥',
+    }
+  );
+
+  // 4. 构建 DID Document
+  const didDocument: DIDDocument = {
+    '@context': ['https://www.w3.org/ns/did/v1'],
+    id: did,
+    verificationMethod: [{
+      id: keyId,
+      type: 'Ed25519VerificationKey2020',
+      controller: did,
+      publicKeyMultibase,
+    }],
+    authentication: [keyId],
+    assertionMethod: [keyId],
+    created: new Date().toISOString(),
+    updated: new Date().toISOString(),
+  };
+
+  // 5. 对 DID Document 哈希进行签名（证明私钥持有）
+  const docHash = await digestSHA256(JSON.stringify(didDocument));
+  const signature = await ed25519.sign(docHash, privateKey);
+
+  // 6. 上传到 DID 注册中心（后端仅保存公钥 + DID Doc）
+  await registerDIDDocument(didDocument, signature);
+
+  // 7. 本地缓存元数据（不含私钥）
+  const metadata: DIDMetadata = {
+    did,
+    method: 'did:key',
+    algorithm: 'Ed25519',
+    keyId,
+    publicKeyMultibase,
+    registeredAt: new Date().toISOString(),
+    status: 'active',
+  };
+
+  return { did, metadata };
+}
+
+// ─── 签名（用于凭证出示） ────────────────────────────
+export async function signWithDID(
+  payload: Uint8Array,
+  keyId: string
+): Promise<Uint8Array> {
+  const privateKeyBase64 = await SecureStore.getItemAsync(
+    `eu_wallet_did_pk_${keyId}`,
+    { requireAuthentication: true }
+  );
+  if (!privateKeyBase64) throw new Error('Private key not found');
+  const privateKey = Buffer.from(privateKeyBase64, 'base64url');
+  return ed25519.sign(payload, privateKey);
+}
+
+// ─── 后端注册 DID Document ──────────────────────────
+async function registerDIDDocument(
+  didDocument: DIDDocument,
+  signature: Uint8Array
+): Promise<void> {
+  const response = await fetch(`${REGISTRY_URL}/api/did/register`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-DID-Signature': Buffer.from(signature).toString('base64url'),
+    },
+    body: JSON.stringify({ didDocument }),
+  });
+  if (!response.ok) {
+    throw new Error(`DID registration failed: ${response.status}`);
+  }
+}
+
+// ─── 密钥轮换（高级功能） ────────────────────────────
+export async function rotateDIDKey(oldKeyId: string): Promise<DIDMetadata> {
+  // 1. 生成新密钥对
+  // 2. 用旧私钥签名「密钥轮换声明」
+  // 3. 提交到后端，标记旧 DID 为 rotated
+  // 4. 旧私钥从 SecureStore 删除
+  // 5. 返回新 DIDMetadata
+  throw new Error('Key rotation: implementation required');
+}
+```
+
+### 16.4 后端 DID 注册接口规格
+
+#### POST /api/did/register
+
+**请求**
+```json
+{
+  "didDocument": { /* W3C DID Document */ },
+  "clientInfo": {
+    "appVersion": "1.0.0",
+    "platform": "ios"
+  }
+}
+```
+**请求头**
+```
+Content-Type: application/json
+X-DID-Signature: <Base64url(ed25519.sign(SHA256(didDocument), privateKey))>
+```
+
+**成功响应 201**
+```json
+{
+  "did": "did:key:z6Mk...",
+  "registeredAt": "2026-03-19T10:00:00Z",
+  "resolverUrl": "https://resolver.example.com/did:key:z6Mk..."
+}
+```
+
+**错误响应**
+```json
+{ "error": "DID_ALREADY_EXISTS" }   // 409
+{ "error": "INVALID_SIGNATURE" }    // 401
+{ "error": "INVALID_DID_DOCUMENT" } // 422
+```
+
+#### GET /api/did/resolve/:did
+
+返回后端存储的 DID Document（公开接口，无需鉴权）。
+
+#### PATCH /api/did/:did/deactivate
+
+撤销 DID（需提供有效签名），返回 200。
+
+### 16.5 Zustand didStore
+
+```typescript
+// store/didStore.ts
+interface DIDState {
+  did: string | null;
+  metadata: DIDMetadata | null;
+  isGenerating: boolean;
+  error: string | null;
+
+  // Actions
+  generateAndRegisterDID: () => Promise<void>;
+  loadDIDFromCache: () => Promise<void>;
+  rotateDIDKey: () => Promise<void>;
+  clearDID: () => void;
+}
+```
+
+### 16.6 Onboarding 集成
+
+在 **Step 7: SUCCESS** 视图渲染前，后台静默执行：
+
+```
+SUCCESS 步骤显示动画期间（约 1.5s）
+  │
+  ├─ didStore.generateAndRegisterDID()
+  │    ├─ 成功：缓存 DIDMetadata → 继续进入主界面
+  │    └─ 失败（网络离线）：本地生成并缓存，标记 pendingUpload = true
+  │                         App 联网后重试上传（后台任务）
+  │
+  └─ 主界面 ProfileScreen 展示用户 DID 标识符
+```
+
+### 16.7 安全约束补充
+
+| 约束项                    | 规则                                         |
+| ---------------------- | ------------------------------------------ |
+| 私钥访问                   | 必须通过生物识别或 PIN（`requireAuthentication: true`） |
+| 私钥备份                   | 禁止导出到剪贴板、截图、日志；云备份中加密存储（AES-256-GCM）      |
+| 公钥传输                   | 使用 TLS 1.3 + 请求签名双重保护                      |
+| DID 与手机号关联             | 后端存储关联关系时使用单向哈希，不明文存储手机号                   |
+| SecureStore 生物识别要求等级   | iOS: `kSecAccessControlBiometryCurrentSet` |
+|                        | Android: `BIOMETRIC_STRONG`                |
+
+---
+
+## 17. 双端推送通知系统
+
+> **目标**：无论 App 处于前台、后台还是完全关闭，用户均能及时收到凭证状态变更、验证请求等关键通知。
+
+### 17.1 架构概览
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         后端服务                                  │
+│                                                                  │
+│  业务事件触发器         推送调度服务            DID Registry        │
+│  (凭证到期检查 / ─────► (Expo Push API /  ◄──── (设备令牌表)        │
+│   第三方核验请求)        FCM / APNs)                               │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ HTTPS
+           ┌───────────────┼───────────────┐
+           ▼               ▼               ▼
+     ┌─────────┐    ┌─────────────┐  ┌──────────┐
+     │  Expo   │    │  FCM（GCM） │  │  APNs    │
+     │  Push   │    │  Android    │  │   iOS    │
+     │ Service │    └─────┬───────┘  └────┬─────┘
+     └────┬────┘          │               │
+          │               ▼               ▼
+          └──────►  ┌─────────────────────────┐
+                    │    React Native App      │
+                    │                          │
+                    │  前台：应用内横幅通知       │
+                    │  后台：系统通知栏           │
+                    │  关闭：系统通知栏（静默/可见）│
+                    └─────────────────────────┘
+```
+
+### 17.2 推送令牌注册流程
+
+```typescript
+// services/pushNotificationService.ts
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
+
+// ─── 配置通知处理行为 ─────────────────────────────────
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,    // 前台时显示横幅
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+});
+
+// ─── 注册推送令牌 ──────────────────────────────────────
+export async function registerForPushNotifications(
+  userDID: string
+): Promise<string | null> {
+  // 1. 必须是物理设备（模拟器不支持远程推送）
+  if (!Device.isDevice) {
+    console.warn('Push notifications require a physical device');
+    return null;
+  }
+
+  // 2. 请求通知权限
+  const { status: existingStatus } = await Notifications.getPermissionsAsync();
+  let finalStatus = existingStatus;
+  if (existingStatus !== 'granted') {
+    const { status } = await Notifications.requestPermissionsAsync();
+    finalStatus = status;
+  }
+  if (finalStatus !== 'granted') return null;
+
+  // 3. 获取 Expo Push Token（包含项目 ID）
+  const tokenData = await Notifications.getExpoPushTokenAsync({
+    projectId: 'your-expo-project-id',  // 来自 app.json extra.eas.projectId
+  });
+  const expoPushToken = tokenData.data;
+
+  // 4. Android 专用：设置通知渠道
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'EU Wallet',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#003399',
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+    await Notifications.setNotificationChannelAsync('credentials', {
+      name: '凭证状态变更',
+      description: '证件到期、撤销、新凭证',
+      importance: Notifications.AndroidImportance.HIGH,
+    });
+  }
+
+  // 5. 上传令牌到后端（与 DID 绑定）
+  await uploadPushToken({
+    userId: userDID,
+    expoPushToken,
+    platform: Platform.OS as 'ios' | 'android',
+    appVersion: Constants.expoConfig?.version ?? '1.0.0',
+  });
+
+  // 6. 本地缓存令牌
+  await AsyncStorage.setItem(STORAGE_KEYS.PUSH_TOKEN, expoPushToken);
+
+  return expoPushToken;
+}
+
+// ─── 上传令牌到后端 ────────────────────────────────────
+async function uploadPushToken(token: Omit<DevicePushToken, 'registeredAt' | 'lastActiveAt'>): Promise<void> {
+  await fetch(`${process.env.EXPO_PUBLIC_PUSH_SERVER_URL}/api/push/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...token,
+      registeredAt: new Date().toISOString(),
+      lastActiveAt: new Date().toISOString(),
+    }),
+  });
+}
+```
+
+### 17.3 前台通知处理（App 运行中）
+
+```typescript
+// hooks/usePushNotifications.ts
+import { useEffect, useRef } from 'react';
+import * as Notifications from 'expo-notifications';
+import { useNavigation } from '@react-navigation/native';
+
+export function usePushNotifications() {
+  const notificationListener = useRef<Notifications.EventSubscription>();
+  const responseListener     = useRef<Notifications.EventSubscription>();
+  const navigation = useNavigation();
+
+  useEffect(() => {
+    // 监听收到通知（App 在前台时触发）
+    notificationListener.current = Notifications.addNotificationReceivedListener(
+      (notification) => {
+        const { category, data } = notification.request.content;
+        // 存储到 notificationStore
+        notificationStore.getState().addNotification({
+          id:         notification.request.identifier,
+          category:   category as PushNotificationCategory,
+          title:      notification.request.content.title ?? '',
+          body:       notification.request.content.body  ?? '',
+          data:       data as Record<string, any>,
+          receivedAt: new Date().toISOString(),
+          isRead:     false,
+        });
+      }
+    );
+
+    // 监听用户点击通知（含后台/关闭状态下点击）
+    responseListener.current = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        const data = response.notification.request.content.data;
+        handleNotificationDeepLink(data, navigation);
+      }
+    );
+
+    return () => {
+      notificationListener.current?.remove();
+      responseListener.current?.remove();
+    };
+  }, []);
+}
+
+// ─── 通知深度链接路由 ─────────────────────────────────
+function handleNotificationDeepLink(
+  data: Record<string, any>,
+  navigation: any
+): void {
+  switch (data.action) {
+    case 'OPEN_CREDENTIAL':
+      navigation.navigate('CredentialDetail', { id: data.credentialId });
+      break;
+    case 'OPEN_RENEWAL':
+      navigation.navigate('Renewal', { id: data.credentialId });
+      break;
+    case 'OPEN_SCAN':
+      navigation.navigate('Scan');
+      break;
+    case 'OPEN_NOTIFICATIONS':
+      navigation.navigate('Notifications');
+      break;
+    default:
+      navigation.navigate('WalletHome');
+  }
+}
+```
+
+### 17.4 后台 / App 关闭时的通知接收
+
+React Native 原生推送在 App 关闭时由 **系统（FCM / APNs）** 直接派发，无需 App 运行。关键配置：
+
+#### iOS（APNs 后台推送）
+
+```typescript
+// app.config.ts — iOS 推送能力
+{
+  ios: {
+    infoPlist: {
+      UIBackgroundModes: ['remote-notification'],  // 开启后台推送接收
+    },
+    entitlements: {
+      'aps-environment': 'development',  // production 环境改为 'production'
+    }
+  }
+}
+```
+
+iOS 后台静默推送（`content-available: 1`）允许 App 在后台获取数据更新，再展示本地通知；可见推送（`alert`）由系统直接展示，无需 App 唤起。
+
+#### Android（FCM 后台推送）
+
+FCM 的 `data` 消息（无 `notification` 字段）在 App 后台/关闭时会唤醒 `FirebaseMessagingService`（由 Expo 自动配置）。配置 `google-services.json` 后无需额外代码。
+
+```json
+// FCM 后台消息体示例（服务端发送）
+{
+  "to": "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]",
+  "priority": "high",
+  "data": {
+    "action": "OPEN_CREDENTIAL",
+    "credentialId": "urn:uuid:abc-123",
+    "category": "CREDENTIAL_EXPIRY"
+  },
+  "notification": {
+    "title": "凭证即将到期",
+    "body": "您的驾照将在 5 天后到期，请及时续期。",
+    "android_channel_id": "credentials"
+  }
+}
+```
+
+### 17.5 后端推送调度服务规格
+
+#### 推送触发场景
+
+| 触发事件              | 通知类别                | 优先级    | 后台可见 |
+| ----------------- | ------------------- | ------ | ---- |
+| 凭证距到期 30 天        | `CREDENTIAL_EXPIRY` | normal | ✅    |
+| 凭证距到期 7 天         | `CREDENTIAL_EXPIRY` | high   | ✅    |
+| 凭证距到期 1 天         | `CREDENTIAL_EXPIRY` | urgent | ✅    |
+| 凭证被发行机构撤销         | `CREDENTIAL_REVOKED`| urgent | ✅    |
+| 第三方请求身份验证（DIDComm）| `VERIFICATION_REQUEST`| high | ✅    |
+| 新凭证可领取            | `CREDENTIAL_ISSUED` | normal | ✅    |
+| 云备份超 30 天未同步      | `BACKUP_REMINDER`   | low    | ✅    |
+| 系统公告              | `SYSTEM`            | low    | ✅    |
+
+#### 后端定时任务（Cron）
+
+```
+每天 09:00 UTC — 扫描所有用户凭证，触发到期预警推送
+每小时          — 检查 CREDENTIAL_REVOKED 事件队列
+实时             — DIDComm 验证请求（WebSocket 转推送）
+每周一 08:00    — 云备份超期提醒
+```
+
+#### 后端推送接口
+
+**POST /api/push/send**（内部服务调用）
+```json
+{
+  "userDID": "did:key:z6Mk...",
+  "notification": {
+    "title": "凭证即将到期",
+    "body": "您的欧盟驾照将在 5 天后到期。",
+    "category": "CREDENTIAL_EXPIRY",
+    "data": {
+      "action": "OPEN_RENEWAL",
+      "credentialId": "urn:uuid:abc-123"
+    }
+  },
+  "priority": "high"
+}
+```
+
+后端查询 `device_tokens` 表，调用 Expo Push API 批量发送（最多 100 个令牌/次）：
+
+```javascript
+// 后端推送发送示例（Node.js）
+const { Expo } = require('expo-server-sdk');
+const expo = new Expo();
+
+const messages = tokens.map(token => ({
+  to: token.expoPushToken,
+  sound: 'default',
+  title: notification.title,
+  body: notification.body,
+  data: notification.data,
+  priority: notification.priority,
+  channelId: 'credentials',  // Android 渠道
+  badge: 1,                  // iOS 角标
+}));
+
+const chunks = expo.chunkPushNotifications(messages);
+for (const chunk of chunks) {
+  await expo.sendPushNotificationsAsync(chunk);
+}
+```
+
+### 17.6 Zustand notificationStore
+
+```typescript
+// store/notificationStore.ts
+interface NotificationState {
+  pushToken: string | null;
+  notifications: PushNotificationRecord[];
+  unreadCount: number;
+
+  // Actions
+  setPushToken: (token: string) => void;
+  addNotification: (record: PushNotificationRecord) => void;
+  markAsRead: (id: string) => void;
+  markAllAsRead: () => void;
+  clearNotifications: () => void;
+
+  // 持久化
+  hydrate: () => Promise<void>;
+}
+```
+
+### 17.7 App 启动时的冷启动通知处理
+
+```typescript
+// app/_layout.tsx 或 RootNavigator.tsx
+useEffect(() => {
+  // 获取 App 关闭状态下用户点击通知触发的启动
+  Notifications.getLastNotificationResponseAsync().then((response) => {
+    if (response) {
+      const data = response.notification.request.content.data;
+      // 延迟导航（等待导航器挂载）
+      setTimeout(() => handleNotificationDeepLink(data, navigation), 500);
+    }
+  });
+}, []);
+```
+
+### 17.8 权限请求时机
+
+推送权限在 Onboarding **Step 7: SUCCESS** 完成后异步请求（不阻塞用户流程）：
+
+```
+进入主界面后首次渲染 WalletHomeScreen
+       │
+       ▼
+usePushNotifications() Hook 检查权限状态
+       │
+       ├─ 已授权：静默更新令牌（如令牌过期）
+       │
+       └─ 未授权：延迟 3 秒后显示 Modal
+                  说明推送通知的用途与益处
+                  用户同意 → requestPermissionsAsync()
+                  用户拒绝 → 记录 neverAskAgain，不再打扰
+```
+
+### 17.9 建构配置更新
+
+```bash
+# Android：需配置 FCM
+# 1. 从 Firebase Console 下载 google-services.json
+# 2. 放置于项目根目录
+# 3. app.config.ts 中指定路径
+
+# iOS：APNs 需要签名配置
+# 1. 在 Apple Developer 门户创建 Push Notification Key（.p8 文件）
+# 2. 在后端推送服务中配置 APNs 认证密钥
+# 3. 本地开发使用 development APNs 环境
+
+# 重新构建原生层
+npx expo prebuild --clean
+npx expo run:ios    # 或 npx expo run:android
+```
 
 ---
 

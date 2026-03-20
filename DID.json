@@ -1,0 +1,35 @@
+{
+    "@context": [
+        "https://www.w3.org/ns/did/v1",
+        "https://w3id.org/security/suites/jws-2020/v1"
+    ],
+    "id": "did:web:iam-dev.percent.cn:iam:did:12345",
+    "verificationMethod": [
+        {
+            "id": "did:web:iam-dev.percent.cn:iam:did:12345#YQvv8RvSmzMneuA12rN10ypYyppcbZjHa1XMaPxgxSA",
+            "type": "JsonWebKey2020",
+            "controller": "did:web:iam-dev.percent.cn:iam:did:12345",
+            "publicKeyJwk": {
+                "kty": "OKP",
+                "crv": "Ed25519",
+                "kid": "YQvv8RvSmzMneuA12rN10ypYyppcbZjHa1XMaPxgxSA",
+                "x": "BpVM7igIiXpW4LWuHUWXUuVYhFoDfm224TCQ44F_K_s"
+            }
+        }
+    ],
+    "assertionMethod": [
+        "did:web:iam-dev.percent.cn:iam:did:12345#YQvv8RvSmzMneuA12rN10ypYyppcbZjHa1XMaPxgxSA"
+    ],
+    "authentication": [
+        "did:web:iam-dev.percent.cn:iam:did:12345#YQvv8RvSmzMneuA12rN10ypYyppcbZjHa1XMaPxgxSA"
+    ],
+    "capabilityInvocation": [
+        "did:web:iam-dev.percent.cn:iam:did:12345#YQvv8RvSmzMneuA12rN10ypYyppcbZjHa1XMaPxgxSA"
+    ],
+    "capabilityDelegation": [
+        "did:web:iam-dev.percent.cn:iam:did:12345#YQvv8RvSmzMneuA12rN10ypYyppcbZjHa1XMaPxgxSA"
+    ],
+    "keyAgreement": [
+        "did:web:iam-dev.percent.cn:iam:did:12345#YQvv8RvSmzMneuA12rN10ypYyppcbZjHa1XMaPxgxSA"
+    ]
+}

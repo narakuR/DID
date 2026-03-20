@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Alert,
   I18nManager,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import {
   User,
   Shield,
@@ -20,7 +21,6 @@ import {
   ChevronRight,
   CheckCircle,
 } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
 
 import { useAuthStore } from '@/store/authStore';
 import { useWalletStore } from '@/store/walletStore';
@@ -28,9 +28,10 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { biometricService } from '@/services/biometricService';
 import { useTheme } from '@/hooks/useTheme';
 import { COLORS } from '@/constants/colors';
-import { Language } from '@/types';
+import { DIDMetadata, Language } from '@/types';
 import Modal from '@/components/Modal';
 import PinPad from '@/components/PinPad';
+import { didService } from '@/services/didService';
 
 const LANGUAGES: { code: Language; label: string; flag: string }[] = [
   { code: 'en', label: 'English', flag: '🇬🇧' },
@@ -46,6 +47,7 @@ export default function ProfileScreen() {
   const { user, updateUser, logout, updateCloudSync, cloudSync } = useAuthStore();
   const { clearWallet } = useWalletStore();
   const { theme, toggleTheme, language, setLanguage } = useSettingsStore();
+  const [didMetadata, setDidMetadata] = useState<DIDMetadata | null>(null);
 
   // Modal visibility states
   const [modal, setModal] = useState<'personal' | 'security' | 'language' | 'cloud' | 'logout' | null>(null);
@@ -66,7 +68,6 @@ export default function ProfileScreen() {
   const [cloudStep, setCloudStep] = useState<CloudStep>('intro');
   const [cloudPassword, setCloudPassword] = useState('');
   const [cloudPasswordConfirm, setCloudPasswordConfirm] = useState('');
-  const [cloudSyncing, setCloudSyncing] = useState(false);
 
   // Logout modal
   const [logoutStep, setLogoutStep] = useState<'confirm' | 'bio'>('confirm');
@@ -77,6 +78,10 @@ export default function ProfileScreen() {
     .map((w) => w[0])
     .join('')
     .toUpperCase();
+
+  useEffect(() => {
+    didService.getDIDMetadata().then(setDidMetadata).catch(() => setDidMetadata(null));
+  }, []);
 
   function openModal(m: typeof modal) {
     if (m === 'personal') { setNickname(user?.nickname ?? ''); setPhone(user?.phone ?? ''); }
@@ -140,11 +145,9 @@ export default function ProfileScreen() {
     if (cloudPassword !== cloudPasswordConfirm || cloudPassword.length < 4) return;
     await biometricService.saveCloudKey(cloudPassword);
     setCloudStep('syncing');
-    setCloudSyncing(true);
     await new Promise((r) => setTimeout(r, 2500));
     await updateCloudSync(true, new Date().toISOString());
     setCloudStep('success');
-    setCloudSyncing(false);
   }
 
   async function handleDisableCloud() {
@@ -167,9 +170,62 @@ export default function ProfileScreen() {
     }
   }
 
+  async function handleExportDidDocument() {
+    try {
+      const metadata = await didService.getDIDMetadata();
+      if (!metadata) {
+        Alert.alert('No DID', 'DID key pair has not been generated yet.');
+        return;
+      }
+
+      await didService.exportDIDDocumentToDevice();
+      const locationHint = didService.getPrivateKeyLocationHint(metadata.keyId);
+      Alert.alert(
+        'DID 文档已导出',
+        [
+          `DID: ${metadata.did}`,
+          '这是公钥文档，可保存到手机“文件”或发送到其他应用。',
+          `私钥存储键名：${locationHint.storeKey}`,
+          '私钥仍只保存在 SecureStore 中，应用和系统都不会直接显示原始值。',
+        ].join('\n\n'),
+        [
+          {
+            text: '复制私钥键名',
+            onPress: () => {
+              Clipboard.setStringAsync(locationHint.storeKey);
+            },
+          },
+          {
+            text: '输出到控制台',
+            onPress: () => {
+              void logDidPrivateKeyToConsole(metadata.keyId);
+            },
+          },
+          { text: '确定' },
+        ]
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      Alert.alert('Export Failed', message);
+    }
+  }
+
+  async function logDidPrivateKeyToConsole(keyId: string) {
+    try {
+      const locationHint = didService.getPrivateKeyLocationHint(keyId);
+      const value = await didService.getStoredPrivateKeyValue(keyId);
+      console.log('[DID Private Key]', { key: locationHint.storeKey, value });
+      Alert.alert('已输出到控制台', '私钥键值对已输出到控制台日志。');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      Alert.alert('读取私钥失败', message);
+    }
+  }
+
   const menuItems = [
     { icon: <User color={COLORS.euBlue} size={20} />, label: 'Personal Information', onPress: () => openModal('personal') },
     { icon: <Shield color={COLORS.euBlue} size={20} />, label: 'Security', onPress: () => openModal('security') },
+    { icon: <Shield color={COLORS.euBlue} size={20} />, label: 'Export DID Document', onPress: handleExportDidDocument, value: didMetadata ? `${didMetadata.did.slice(0, 18)}...` : 'Not generated' },
     { icon: <Globe color={COLORS.euBlue} size={20} />, label: 'Language', onPress: () => openModal('language'), value: LANGUAGES.find((l) => l.code === language)?.label },
     { icon: <Moon color={COLORS.euBlue} size={20} />, label: 'Dark Mode', onPress: toggleTheme, value: theme === 'dark' ? 'On' : 'Off' },
     { icon: <Cloud color={COLORS.euBlue} size={20} />, label: 'Cloud Backup', onPress: () => openModal('cloud'), value: cloudSync.enabled ? 'Enabled' : 'Not set up' },
