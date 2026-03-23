@@ -37,6 +37,17 @@ export default function PresentationConfirmScreen() {
     setLoading(false);
 
     if (result.type === 'presentation_sent') {
+      const valid = result.verificationResult?.valid;
+      const reasons = Array.isArray(result.verificationResult?.reasons)
+        ? (result.verificationResult?.reasons as string[])
+        : [];
+
+      if (valid === true) {
+        Alert.alert('Verification passed', 'Verifier accepted the presentation.');
+      } else if (valid === false) {
+        Alert.alert('Verification failed', reasons.join('\n') || 'Verifier rejected the presentation.');
+      }
+
       setDone(true);
       setTimeout(() => navigation.navigate('Main'), 1500);
     } else if (result.type === 'error') {
@@ -49,8 +60,7 @@ export default function PresentationConfirmScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
-      {/* Header */}
+    <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}> 
       <View style={styles.header}>
         <TouchableOpacity onPress={handleCancel} style={styles.headerButton}>
           <X color={colors.text} size={24} />
@@ -60,7 +70,6 @@ export default function PresentationConfirmScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        {/* Verifier info */}
         <View style={[styles.verifierCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Shield color={COLORS.euBlue} size={32} />
           <View style={styles.verifierInfo}>
@@ -71,22 +80,15 @@ export default function PresentationConfirmScreen() {
           </View>
         </View>
 
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>
-          Credentials to share
-        </Text>
-        <Text style={[styles.sectionDesc, { color: colors.textSecondary }]}>
-          The following credentials and fields will be shared with the verifier.
-        </Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Credentials to share</Text>
+        <Text style={[styles.sectionDesc, { color: colors.textSecondary }]}>The following credentials and fields will be shared with the verifier.</Text>
 
-        {/* Matched credentials */}
         {request.matches.map((match, i) => (
           <View key={`${match.queryId}-${i}`} style={styles.matchItem}>
             <CredentialCard credential={match.credential} />
             {match.disclosedClaims.length > 0 && (
               <View style={[styles.claimsBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Text style={[styles.claimsTitle, { color: colors.textSecondary }]}>
-                  Fields being shared:
-                </Text>
+                <Text style={[styles.claimsTitle, { color: colors.textSecondary }]}>Fields being shared:</Text>
                 {match.disclosedClaims.map((claim) => (
                   <View key={claim} style={styles.claimRow}>
                     <ChevronRight color={COLORS.euBlue} size={14} />
@@ -99,7 +101,6 @@ export default function PresentationConfirmScreen() {
         ))}
       </ScrollView>
 
-      {/* Bottom action */}
       <View style={[styles.footer, { borderTopColor: colors.border }]}>
         {done ? (
           <View style={styles.successRow}>
@@ -120,11 +121,7 @@ export default function PresentationConfirmScreen() {
               onPress={handleConfirm}
               disabled={loading}
             >
-              {loading ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
-              ) : (
-                <Text style={styles.shareBtnText}>Share</Text>
-              )}
+              {loading ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Text style={styles.shareBtnText}>Share</Text>}
             </TouchableOpacity>
           </>
         )}

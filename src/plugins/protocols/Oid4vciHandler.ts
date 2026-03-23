@@ -1,10 +1,5 @@
-import { Openid4vciClient } from '@openid4vc/openid4vci';
-
 import type { IProtocolHandler, ProtocolContext, ProtocolResult } from '../types';
 import type { CredentialFormatName } from '../types';
-import { buildOid4vcCallbacks } from '../utils/oid4vcCallbacks';
-
-// ── Format detection ──────────────────────────────────────────────────────────
 
 function toFormatName(format: string | undefined): CredentialFormatName {
   if (!format) return 'jwt_vc_json';
@@ -13,45 +8,42 @@ function toFormatName(format: string | undefined): CredentialFormatName {
   return format as CredentialFormatName;
 }
 
-function extractRawCredential(
-  credentialResponse: import('@openid4vc/openid4vci').CredentialResponse
-): string {
-  if (Array.isArray(credentialResponse.credentials) && credentialResponse.credentials.length > 0) {
-    const first = credentialResponse.credentials[0];
-    if (typeof first === 'string') return first;
-    if (first && typeof (first as { credential?: unknown }).credential === 'string') {
-      return (first as { credential: string }).credential;
+type CredentialOffer = {
+  credential_issuer: string;
+  credential_configuration_ids?: string[];
+  grants?: {
+    'urn:ietf:params:oauth:grant-type:pre-authorized_code'?: {
+      'pre-authorized_code'?: string;
+    };
+  };
+};
+
+async function resolveCredentialOffer(uri: string): Promise<CredentialOffer> {
+  const normalized = uri.startsWith('openid-credential-offer://')
+    ? uri.replace('openid-credential-offer://', 'https://dummy.local')
+    : uri.startsWith('openid4vci://')
+      ? uri.replace('openid4vci://', 'https://dummy.local')
+      : uri;
+
+  const url = new URL(normalized);
+  const inlineOffer = url.searchParams.get('credential_offer');
+  const offerUri = url.searchParams.get('credential_offer_uri');
+
+  if (inlineOffer) {
+    return JSON.parse(decodeURIComponent(inlineOffer)) as CredentialOffer;
+  }
+
+  if (offerUri) {
+    const res = await fetch(decodeURIComponent(offerUri));
+    if (!res.ok) {
+      throw new Error(`Failed to fetch credential_offer_uri (${res.status})`);
     }
+    return (await res.json()) as CredentialOffer;
   }
-  if (typeof credentialResponse.credential === 'string') {
-    return credentialResponse.credential;
-  }
-  throw new Error('No credential found in issuer response');
+
+  throw new Error('No credential_offer or credential_offer_uri found in URI');
 }
 
-// ── Auth code flow pending state ──────────────────────────────────────────────
-
-interface PendingAuthCodeState {
-  credentialOffer: import('@openid4vc/openid4vci').CredentialOfferObject;
-  issuerMetadata: import('@openid4vc/openid4vci').IssuerMetadataResult;
-  pkceCodeVerifier?: string;
-  ctx: ProtocolContext;
-}
-
-const _pendingAuthCodeRequests = new Map<string, PendingAuthCodeState>();
-
-// ── Oid4vciHandler ────────────────────────────────────────────────────────────
-
-/**
- * OID4VCI protocol handler.
- * Handles `openid-credential-offer://` and `openid4vci://` deep links.
- *
- * Pre-authorized code flow executes fully inline.
- * Authorization code flow:
- *   1. Returns `{ type: 'redirect', url }` — caller opens URL in browser.
- *   2. Browser redirects to `did://oid4vci/callback?code=...&state=...`.
- *   3. `canHandle()` recognises the callback URI; `handle()` resumes the flow.
- */
 export class Oid4vciHandler implements IProtocolHandler {
   readonly scheme = 'openid-credential-offer';
 
@@ -60,163 +52,77 @@ export class Oid4vciHandler implements IProtocolHandler {
       uri.startsWith('openid-credential-offer://') ||
       uri.startsWith('openid4vci://') ||
       uri.includes('credential_offer') ||
-      uri.includes('credential_offer_uri') ||
-      // Auth code callback
-      (uri.startsWith('did://oid4vci/callback') && uri.includes('code='))
+      uri.includes('credential_offer_uri')
     );
   }
 
   async handle(uri: string, ctx: ProtocolContext): Promise<ProtocolResult> {
-    // ── Auth code callback branch ─────────────────────────────────────────────
-    if (uri.startsWith('did://oid4vci/callback')) {
-      return this._handleAuthCodeCallback(uri);
-    }
-
-    // ── Credential offer branch ───────────────────────────────────────────────
-    const callbacks = buildOid4vcCallbacks();
-    const client = new Openid4vciClient({ callbacks });
-
     try {
-      // 1. Resolve offer
-      const offer = await client.resolveCredentialOffer(uri);
+      const offer = await resolveCredentialOffer(uri);
+      const preAuthorizedCode =
+        offer.grants?.['urn:ietf:params:oauth:grant-type:pre-authorized_code']?.[
+          'pre-authorized_code'
+        ];
 
-      // 2. Fetch issuer metadata
-      const issuerMetadata = await client.resolveIssuerMetadata(offer.credential_issuer);
-
-      // 3. Determine grant type
-      const grants = offer.grants ?? {};
-      const preAuthGrant =
-        grants['urn:ietf:params:oauth:grant-type:pre-authorized_code'] ?? null;
-
-      if (!preAuthGrant) {
-        // Authorization code flow — signal caller to open browser
-        const authResult = await client.initiateAuthorization({
-          credentialOffer: offer,
-          issuerMetadata,
-          clientId: 'wallet',
-          redirectUri: 'did://oid4vci/callback',
-        });
-
-        if ('authorizationRequestUrl' in authResult) {
-          // Store pending state keyed by a generated state value
-          const state = `oid4vci-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-          _pendingAuthCodeRequests.set(state, {
-            credentialOffer: offer,
-            issuerMetadata,
-            pkceCodeVerifier: authResult.pkce?.codeVerifier,
-            ctx,
-          });
-
-          // Append state to the auth URL so the callback can look it up
-          const separator = authResult.authorizationRequestUrl.includes('?') ? '&' : '?';
-          const urlWithState = `${authResult.authorizationRequestUrl}${separator}state=${state}`;
-
-          return { type: 'redirect', url: urlWithState };
-        }
-        return { type: 'error', message: 'Authorization flow not supported in this version' };
+      if (!preAuthorizedCode) {
+        return { type: 'error', message: 'Only pre-authorized code flow is supported in this build.' };
       }
 
-      // 4. Retrieve access token (pre-auth flow)
-      const { accessTokenResponse } = await client.retrievePreAuthorizedCodeAccessTokenFromOffer({
-        credentialOffer: offer,
-        issuerMetadata,
-        // txCode: undefined — if required, caller must inject via context
+      const tokenEndpoint = `${offer.credential_issuer}/token`;
+      const credentialEndpoint = `${offer.credential_issuer}/credential`;
+
+      const tokenRes = await fetch(tokenEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          grant_type: 'urn:ietf:params:oauth:grant-type:pre-authorized_code',
+          'pre-authorized_code': preAuthorizedCode,
+        }),
       });
 
-      return this._retrieveAndPersistCredentials(
-        client,
-        issuerMetadata,
-        accessTokenResponse.access_token,
-        offer.credential_configuration_ids ?? [],
-        ctx
-      );
+      if (!tokenRes.ok) {
+        throw new Error(`Token exchange failed (${tokenRes.status})`);
+      }
+
+      const tokenJson = (await tokenRes.json()) as { access_token?: string };
+      const accessToken = tokenJson.access_token;
+      if (!accessToken) throw new Error('Missing access_token in token response');
+
+      const configId = offer.credential_configuration_ids?.[0] ?? 'GenericCredential';
+      const credentialRes = await fetch(credentialEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ credential_configuration_id: configId }),
+      });
+
+      if (!credentialRes.ok) {
+        throw new Error(`Credential retrieval failed (${credentialRes.status})`);
+      }
+
+      const credentialJson = (await credentialRes.json()) as {
+        credential?: string;
+        format?: string;
+      };
+
+      if (!credentialJson.credential) {
+        throw new Error('Issuer response does not contain `credential`');
+      }
+
+      const formatName = toFormatName(credentialJson.format);
+      const formatHandler = ctx.registry.getCredentialFormat(formatName);
+      const parsedCredential = await formatHandler.parse(credentialJson.credential);
+      const displayModel = formatHandler.toDisplayModel(parsedCredential);
+      displayModel._raw = credentialJson.credential;
+      displayModel._format = parsedCredential.format;
+
+      return { type: 'credential_received', credentials: [displayModel] };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return { type: 'error', message: `OID4VCI error: ${message}` };
     }
-  }
-
-  // ── Private helpers ───────────────────────────────────────────────────────
-
-  private async _handleAuthCodeCallback(callbackUri: string): Promise<ProtocolResult> {
-    const parsed = new URL(callbackUri.replace('did://', 'https://'));
-    const code = parsed.searchParams.get('code');
-    const state = parsed.searchParams.get('state');
-
-    if (!code) {
-      return { type: 'error', message: 'Auth code callback missing `code` parameter' };
-    }
-    if (!state) {
-      return { type: 'error', message: 'Auth code callback missing `state` parameter' };
-    }
-
-    const pending = _pendingAuthCodeRequests.get(state);
-    if (!pending) {
-      return { type: 'error', message: 'No pending auth code request found for this state' };
-    }
-    _pendingAuthCodeRequests.delete(state);
-
-    const callbacks = buildOid4vcCallbacks();
-    const client = new Openid4vciClient({ callbacks });
-
-    try {
-      const { accessTokenResponse } =
-        await client.retrieveAuthorizationCodeAccessTokenFromOffer({
-          credentialOffer: pending.credentialOffer,
-          issuerMetadata: pending.issuerMetadata,
-          authorizationCode: code,
-          pkceCodeVerifier: pending.pkceCodeVerifier,
-          redirectUri: 'did://oid4vci/callback',
-        });
-
-      return this._retrieveAndPersistCredentials(
-        client,
-        pending.issuerMetadata,
-        accessTokenResponse.access_token,
-        pending.credentialOffer.credential_configuration_ids ?? [],
-        pending.ctx
-      );
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { type: 'error', message: `Auth code callback error: ${message}` };
-    }
-  }
-
-  private async _retrieveAndPersistCredentials(
-    client: Openid4vciClient,
-    issuerMetadata: import('@openid4vc/openid4vci').IssuerMetadataResult,
-    accessToken: string,
-    credentialConfigIds: string[],
-    ctx: ProtocolContext
-  ): Promise<ProtocolResult> {
-    if (credentialConfigIds.length === 0) {
-      return { type: 'error', message: 'No credential configurations in offer' };
-    }
-
-    const receivedCredentials: import('@/types').VerifiableCredential[] = [];
-
-    for (const configId of credentialConfigIds) {
-      const response = await client.retrieveCredentials({
-        issuerMetadata,
-        accessToken,
-        credentialConfigurationId: configId,
-      });
-
-      const raw = extractRawCredential(response.credentialResponse);
-
-      const configMeta =
-        issuerMetadata.credentialIssuer.credential_configurations_supported?.[configId];
-      const formatName = toFormatName(configMeta?.format as string | undefined);
-
-      const formatHandler = ctx.registry.getCredentialFormat(formatName);
-      const parsedCredential = await formatHandler.parse(raw);
-      const displayModel = formatHandler.toDisplayModel(parsedCredential);
-      displayModel._raw = raw;
-      displayModel._format = parsedCredential.format;
-      receivedCredentials.push(displayModel);
-    }
-
-    return { type: 'credential_received', credentials: receivedCredentials };
   }
 }
 

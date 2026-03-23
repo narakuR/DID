@@ -95,7 +95,7 @@ export interface PendingPresentationRequest {
 export type ProtocolResult =
   | { type: 'credential_received'; credentials: VerifiableCredential[] }
   | { type: 'presentation_request'; request: PendingPresentationRequest }
-  | { type: 'presentation_sent'; verifier: string }
+  | { type: 'presentation_sent'; verifier: string; verificationResult?: Record<string, unknown> }
   | { type: 'redirect'; url: string }
   | { type: 'error'; message: string };
 

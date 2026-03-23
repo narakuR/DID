@@ -1,5 +1,6 @@
 export const CONFIG = {
-  INACTIVITY_LIMIT_MS: 5 * 60 * 1000, // 5 minutes
+  API_BASE_URL: process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:3000',
+  INACTIVITY_LIMIT_MS: 5 * 60 * 1000,
   OTP_DEMO_CODE: '123456',
   OTP_RESEND_COOLDOWN_S: 30,
   PHONE_MIN_CHARS: 8,
@@ -18,9 +19,9 @@ export const CONFIG = {
     SUCCESS: 1500,
   },
   RENEWAL_YEARS: 5,
-  NEAR_EXPIRY_DAYS: 90, // credentials expiring within 90 days
+  NEAR_EXPIRY_DAYS: 90,
   CLOUD_PASSWORD_MIN_CHARS: 4,
-  QR_PRESENT_TIMEOUT_S: 300, // 5 minutes
+  QR_PRESENT_TIMEOUT_S: 300,
   RESTORE_PROGRESS_STAGES: [
     { label: 'Downloading backup…', from: 0, to: 40 },
     { label: 'Verifying integrity…', from: 40, to: 70 },
