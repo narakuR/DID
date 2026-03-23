@@ -95,8 +95,16 @@ export class MdocFormat implements ICredentialFormat {
   }
 
   async selectDisclose(raw: string, _claimPaths: string[]): Promise<string> {
-    // mdoc selective disclosure is handled at the DeviceResponse level (ISO 18013-7).
-    // At the IssuerSigned level we return the full document unchanged.
+    // mdoc selective disclosure operates at the DeviceResponse layer (ISO 18013-7),
+    // not at the IssuerSigned layer.
+    //
+    // IssuerSigned carries the full set of namespace elements signed by the issuer.
+    // To produce a presentation that reveals only specific elements, a DeviceResponse
+    // must be constructed — this requires holder key material and is performed
+    // during the OID4VP presentation flow, not here.
+    //
+    // This passthrough implementation satisfies the ICredentialFormat interface.
+    // Callers must not rely on this method for actual element filtering.
     return raw;
   }
 

@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import { storageService } from '@/services/storageService';
 import { STORAGE_KEYS } from '@/constants/config';
 import { VerifiableCredential } from '@/types';
-import { MOCK_CREDENTIALS } from '@/constants/mockData';
 
 interface WalletState {
   credentials: VerifiableCredential[];
@@ -62,7 +61,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   hydrate: async () => {
     const saved = await storageService.getItem<VerifiableCredential[]>(STORAGE_KEYS.CREDENTIALS);
     set({
-      credentials: saved ?? MOCK_CREDENTIALS,
+      credentials: saved ?? [],
       isHydrated: true,
     });
   },

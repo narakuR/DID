@@ -33,6 +33,10 @@ export interface VerifiableCredential {
     description?: string;
     gradientKey: string; // key into GRADIENT_MAP
   };
+  /** 原始凭证字符串（SD-JWT token / base64url CBOR），供 VP 出示时使用。不参与 UI 展示。 */
+  _raw?: string;
+  /** 凭证格式标识符，与 ICredentialFormat.name 对应 */
+  _format?: 'sd-jwt-vc' | 'jwt_vc_json' | 'mso_mdoc';
 }
 
 export interface ActivityLog {
