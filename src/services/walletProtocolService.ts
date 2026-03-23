@@ -3,6 +3,8 @@ import type { ProtocolResult } from '@/plugins/types';
 import { useWalletStore } from '@/store/walletStore';
 import { didKeyProvider } from '@/plugins/did/DidKeyProvider';
 import { oid4vpHandler } from '@/plugins/protocols/Oid4vpHandler';
+import { credentialRepository } from './credentialRepository';
+import type { StoredCredential } from '@/types';
 
 /**
  * WalletProtocolService
@@ -43,6 +45,18 @@ class WalletProtocolService {
     if (result.type === 'credential_received') {
       const { addCredential } = useWalletStore.getState();
       for (const credential of result.credentials) {
+        // Save to CredentialRepository (raw + display model separated)
+        if (credential._raw) {
+          const stored: StoredCredential = {
+            id: credential.id,
+            format: (credential._format ?? 'jwt_vc_json') as StoredCredential['format'],
+            raw: credential._raw,
+            storedAt: new Date().toISOString(),
+            displayModel: credential,
+          };
+          await credentialRepository.save(stored);
+        }
+        // Also save display model to walletStore for UI rendering
         await addCredential(credential);
       }
     }

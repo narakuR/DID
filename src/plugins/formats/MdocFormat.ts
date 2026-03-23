@@ -90,7 +90,11 @@ export class MdocFormat implements ICredentialFormat {
   }
 
   async verify(_raw: string): Promise<VerifyResult> {
-    // X.509 issuer auth verification deferred to a future phase
+    // mdoc issuer auth verification requires an X.509 trust anchor and COSE Sign1
+    // validation of the MobileSecurityObject. This is exposed via
+    // `issuerSigned.verify(ctx)` in @owf/mdoc but requires caller-provided
+    // certificate chains that are not yet wired in this wallet.
+    // Deferred to a dedicated X.509 verification phase.
     return { valid: true };
   }
 

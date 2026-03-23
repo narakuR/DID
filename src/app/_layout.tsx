@@ -18,6 +18,7 @@ import { registry } from '@/plugins/registry';
 import { didKeyProvider } from '@/plugins/did/DidKeyProvider';
 import { didJwkProvider } from '@/plugins/did/DidJwkProvider';
 import { didWebProvider } from '@/plugins/did/DidWebProvider';
+import { credentialRepository } from '@/services/credentialRepository';
 import { ExpoStorageBackend } from '@/plugins/storage/ExpoStorageBackend';
 import { W3cJwtVcFormat } from '@/plugins/formats/W3cJwtVcFormat';
 import { SdJwtVcFormat } from '@/plugins/formats/SdJwtVcFormat';
@@ -58,7 +59,7 @@ export default function RootLayout() {
   usePushNotifications(allHydrated && isOnboarded);
 
   useEffect(() => {
-    Promise.all([hydrateAuth(), hydrateNotifications(), hydrateWallet(), hydrateSettings()]);
+    Promise.all([hydrateAuth(), hydrateNotifications(), hydrateWallet(), hydrateSettings(), credentialRepository.hydrate()]);
   }, []);
 
   // ── Deep link handler for OID4VCI auth-code callback and offer URIs ──────────

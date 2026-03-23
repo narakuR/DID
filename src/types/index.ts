@@ -39,6 +39,21 @@ export interface VerifiableCredential {
   _format?: 'sd-jwt-vc' | 'jwt_vc_json' | 'mso_mdoc';
 }
 
+/**
+ * Persistent credential record that separates raw token, parsed metadata, and
+ * the display model. This is the authoritative store for credential data — the
+ * walletStore holds only the displayModel for UI rendering.
+ */
+export interface StoredCredential {
+  /** Matches displayModel.id */
+  id: string;
+  format: 'sd-jwt-vc' | 'jwt_vc_json' | 'mso_mdoc';
+  /** Original raw credential string (SD-JWT token / base64url CBOR) */
+  raw: string;
+  storedAt: string; // ISO 8601
+  displayModel: VerifiableCredential;
+}
+
 export interface ActivityLog {
   id: string;
   credentialId: string;

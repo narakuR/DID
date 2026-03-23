@@ -15,6 +15,10 @@ import type {
 import { clientAuthenticationNone } from '@openid4vc/oauth2';
 
 import { didKeyProvider } from '../did/DidKeyProvider';
+import { didJwkProvider } from '../did/DidJwkProvider';
+import { didWebProvider } from '../did/DidWebProvider';
+import { parseJwtUnsafe, base64UrlToBytes } from './jwtUtils';
+import { verifyCompactJwtWithJwk } from './credentialVerify';
 
 // Re-export for external use
 export { clientAuthenticationNone };
@@ -153,17 +157,69 @@ export function buildOid4vcCallbacks(
 }
 
 /**
- * Stub verifyJwt — signature verification deferred to Phase 5+.
- * Returns `verified: true` for all JWTs (trusts the transport).
+ * Real verifyJwt callback for OID4VP request object validation.
+ *
+ * Handles two JwtSigner variants:
+ *  - method: 'jwk'  — public key embedded in the request; verified directly
+ *  - method: 'did'  — DID URL in request; routed to did:key / did:jwk / did:web provider
+ *
+ * Also performs temporal checks (exp / nbf) on the decoded payload.
  */
-const verifyJwtStub: VerifyJwtCallback = async (_jwtSigner, jwt) => {
-  const header = jwt.header as Record<string, unknown>;
-  const alg = typeof header.alg === 'string' ? header.alg : 'EdDSA';
-  const signerJwk: Jwk =
-    alg === 'EdDSA'
-      ? ({ kty: 'OKP', crv: 'Ed25519', x: '' } as Jwk)
-      : ({ kty: 'EC', crv: 'P-256', x: '', y: '' } as Jwk);
-  return { verified: true, signerJwk };
+const verifyJwtCallback: VerifyJwtCallback = async (jwtSigner, jwt) => {
+  try {
+    // 1. Temporal checks — decoded payload is already available
+    const now = Math.floor(Date.now() / 1000);
+    if (typeof jwt.payload.exp === 'number' && jwt.payload.exp < now) {
+      return { verified: false };
+    }
+    if (typeof jwt.payload.nbf === 'number' && jwt.payload.nbf > now) {
+      return { verified: false };
+    }
+
+    // 2. method: 'jwk' — public key provided directly in the request object
+    if (jwtSigner.method === 'jwk') {
+      const publicJwk = (jwtSigner as { method: 'jwk'; publicJwk: Jwk }).publicJwk;
+      const ok = await verifyCompactJwtWithJwk(jwt.compact, publicJwk as Record<string, string>);
+      return ok ? { verified: true, signerJwk: publicJwk } : { verified: false };
+    }
+
+    // 3. method: 'did' — resolve DID, verify signature, extract public JWK
+    if (jwtSigner.method === 'did') {
+      const did = (jwtSigner as { method: 'did'; didUrl: string }).didUrl.split('#')[0];
+      const { signingInput, signature } = parseJwtUnsafe(jwt.compact);
+      const sigBytes = base64UrlToBytes(signature);
+      const inputBytes = new TextEncoder().encode(signingInput);
+
+      if (did.startsWith('did:key:')) {
+        const ok = await didKeyProvider.verify(inputBytes, sigBytes, did);
+        if (!ok) return { verified: false };
+        return { verified: true, signerJwk: pubJwkFromDidKey(did) };
+      }
+
+      if (did.startsWith('did:jwk:')) {
+        const ok = await didJwkProvider.verify(inputBytes, sigBytes, did);
+        if (!ok) return { verified: false };
+        const doc = await didJwkProvider.resolve(did);
+        const signerJwk = doc.verificationMethod[0].publicKeyJwk as Jwk;
+        return { verified: true, signerJwk };
+      }
+
+      if (did.startsWith('did:web:')) {
+        const ok = await didWebProvider.verify(inputBytes, sigBytes, did);
+        if (!ok) return { verified: false };
+        const doc = await didWebProvider.resolve(did);
+        const signerJwk = doc.verificationMethod[0].publicKeyJwk as Jwk;
+        return { verified: true, signerJwk };
+      }
+
+      return { verified: false };
+    }
+
+    // x5c / federation / custom — not supported in this version
+    return { verified: false };
+  } catch {
+    return { verified: false };
+  }
 };
 
 /** Stub — JWE encryption not needed for direct_post response mode. */
@@ -176,7 +232,8 @@ const decryptJweStub: DecryptJweCallback = async () => ({ decrypted: false });
 
 /**
  * Build the callback context required by Openid4vpClient.
- * `verifyJwt` is stubbed (verification deferred); JWE stubs throw if called.
+ * `verifyJwt` performs real signature verification for did:key / did:jwk / did:web
+ * and handles temporal exp/nbf checks. JWE stubs throw if called (not needed for direct_post).
  */
 export function buildOid4vpCallbacks(): Omit<
   CallbackContext,
@@ -185,7 +242,7 @@ export function buildOid4vpCallbacks(): Omit<
   return {
     hash: hashCallback,
     signJwt: signJwtCallback,
-    verifyJwt: verifyJwtStub,
+    verifyJwt: verifyJwtCallback,
     encryptJwe: encryptJweStub,
     decryptJwe: decryptJweStub,
   };

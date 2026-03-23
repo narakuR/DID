@@ -31,6 +31,7 @@ export const CONFIG = {
 
 export const STORAGE_KEYS = {
   CREDENTIALS: '@did_wallet/credentials',
+  STORED_CREDENTIALS: '@did_wallet/stored_credentials',
   AUTH_STATE: '@did_wallet/auth_state',
   SETTINGS: '@did_wallet/settings',
   ACTIVITY_LOGS: '@did_wallet/activity_logs',

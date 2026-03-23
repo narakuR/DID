@@ -1,6 +1,7 @@
 import { IssuerType, type VerifiableCredential } from '@/types';
 import type { ICredentialFormat, ParsedCredential, VerifyResult } from '../types';
 import { parseJwtUnsafe } from '../utils/jwtUtils';
+import { verifyJwtByIssuerDid } from '../utils/credentialVerify';
 
 // Map common issuer DID prefixes / vct patterns to IssuerType
 function inferIssuerType(issuerDid: string): IssuerType {
@@ -64,10 +65,8 @@ export class W3cJwtVcFormat implements ICredentialFormat {
     };
   }
 
-  async verify(_raw: string): Promise<VerifyResult> {
-    // Signature verification is deferred to Phase 3+
-    // (requires DID resolution + @noble/curves verify)
-    return { valid: true };
+  async verify(raw: string): Promise<VerifyResult> {
+    return verifyJwtByIssuerDid(raw);
   }
 
   async selectDisclose(raw: string, _claimPaths: string[]): Promise<string> {

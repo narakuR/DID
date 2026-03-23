@@ -4,6 +4,7 @@ import { DcqlQuery } from 'dcql';
 import type { IProtocolHandler, ProtocolContext, ProtocolResult, PendingPresentationRequest } from '../types';
 import { buildOid4vpCallbacks } from '../utils/oid4vcCallbacks';
 import type { VerifiableCredential } from '@/types';
+import { credentialRepository } from '@/services/credentialRepository';
 
 // ── Pending request store (in-process, not persisted) ─────────────────────────
 
@@ -72,11 +73,12 @@ async function buildDcqlVpToken(
   const vpToken: Record<string, string> = {};
 
   for (const { credential, disclosedClaims, queryId } of matches) {
-    // Find the raw credential string by format
-    const rawCredential = (credential as VerifiableCredential & { _raw?: string })._raw;
+    // Prefer raw from CredentialRepository; fall back to _raw on display model
+    const stored = credentialRepository.getById(credential.id);
+    const rawCredential = stored?.raw ?? (credential as VerifiableCredential & { _raw?: string })._raw;
 
     if (!rawCredential) {
-      // No raw token stored — use ID as placeholder (should not happen in production)
+      // No raw token available — use ID as placeholder (should not happen in production)
       vpToken[queryId] = credential.id ?? queryId;
       continue;
     }
@@ -171,10 +173,10 @@ export class Oid4vpHandler implements IProtocolHandler {
               const idx = match.valid_credentials[0].input_credential_index;
               const credential = ctx.credentials[idx];
               const credQuery = dcqlQuery.credentials.find((c) => c.id === queryId);
-              // Extract top-level claim paths for selective disclosure (path-based claims only)
+              // Extract full claim paths for selective disclosure (supports nested paths)
               const disclosedClaims = (credQuery?.claims ?? [])
                 .filter((c): c is { path: [string, ...string[]] } => 'path' in c)
-                .map((c) => c.path[0]);
+                .map((c) => c.path.join('.'));
               matchedCredentials.push({ credential, disclosedClaims, queryId });
             }
           }

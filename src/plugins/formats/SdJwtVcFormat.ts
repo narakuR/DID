@@ -4,6 +4,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { IssuerType, type VerifiableCredential } from '@/types';
 import type { ICredentialFormat, ParsedCredential, VerifyResult } from '../types';
 import { stringToBase64Url } from '../utils/jwtUtils';
+import { verifyJwtByIssuerDid } from '../utils/credentialVerify';
 
 // ── SD-JWT hasher (SHA-256 → base64url) ───────────────────────────────────────
 
@@ -53,6 +54,32 @@ function resolveDisplay(vct?: string, issuerDid?: string) {
   return { title: 'Credential', gradientKey: 'blue', issuerType: IssuerType.IDENTITY };
 }
 
+// ── Selective-disclosure frame builder ────────────────────────────────────────
+
+/**
+ * Convert dot-joined claim paths to the nested presentFrame object required by
+ * `@sd-jwt/present`. For example:
+ *   ['given_name', 'address.country']
+ *   → { given_name: true, address: { country: true } }
+ */
+type PresentFrame = { [key: string]: boolean | PresentFrame };
+
+function buildPresentFrame(paths: string[]): PresentFrame {
+  const frame: PresentFrame = {};
+  for (const path of paths) {
+    const parts = path.split('.');
+    let cur = frame;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (typeof cur[parts[i]] !== 'object' || cur[parts[i]] === null) {
+        cur[parts[i]] = {};
+      }
+      cur = cur[parts[i]] as PresentFrame;
+    }
+    cur[parts[parts.length - 1]] = true;
+  }
+  return frame;
+}
+
 // ── SdJwtVcFormat ─────────────────────────────────────────────────────────────
 
 /**
@@ -88,21 +115,23 @@ export class SdJwtVcFormat implements ICredentialFormat {
     };
   }
 
-  async verify(_raw: string): Promise<VerifyResult> {
-    // Signature verification deferred to Phase 3+ (requires DID resolution)
-    return { valid: true };
+  async verify(raw: string): Promise<VerifyResult> {
+    // SD-JWT format: <jwt>~[disclosure1]~[disclosure2]~[kb-jwt]
+    // Verify only the issuer's signature on the JWT part (before the first '~').
+    const jwtPart = raw.split('~')[0];
+    return verifyJwtByIssuerDid(jwtPart);
   }
 
   /**
    * Rebuild the SD-JWT with only the disclosures matching the requested claim paths.
    * Uses `present()` from @sd-jwt/present for spec-compliant selective disclosure.
+   *
+   * `claimPaths` are dot-joined paths (e.g. `['given_name', 'address.country']`).
+   * These are converted to the nested frame object required by `present()`:
+   * `{ given_name: true, address: { country: true } }`.
    */
   async selectDisclose(raw: string, claimPaths: string[]): Promise<string> {
-    const presentFrame: Record<string, boolean> = {};
-    for (const path of claimPaths) {
-      presentFrame[path] = true;
-    }
-    return present(raw, presentFrame, sdJwtHasher);
+    return present(raw, buildPresentFrame(claimPaths), sdJwtHasher);
   }
 
   toDisplayModel(parsed: ParsedCredential): VerifiableCredential {
