@@ -19,6 +19,7 @@ import { didKeyProvider } from '@/plugins/did/DidKeyProvider';
 import { didJwkProvider } from '@/plugins/did/DidJwkProvider';
 import { didWebProvider } from '@/plugins/did/DidWebProvider';
 import { credentialRepository } from '@/services/credentialRepository';
+import { useDeepLinkStore } from '@/store/deepLinkStore';
 import { ExpoStorageBackend } from '@/plugins/storage/ExpoStorageBackend';
 import { W3cJwtVcFormat } from '@/plugins/formats/W3cJwtVcFormat';
 import { SdJwtVcFormat } from '@/plugins/formats/SdJwtVcFormat';
@@ -54,6 +55,8 @@ export default function RootLayout() {
 
   const allHydrated = authHydrated && notificationHydrated && walletHydrated && settingsHydrated;
 
+  const setPendingDeepLink = useDeepLinkStore((s) => s.setPending);
+
   const { isDark } = useTheme();
   const inactivityTimer = useInactivityTimer();
   usePushNotifications(allHydrated && isOnboarded);
@@ -68,7 +71,9 @@ export default function RootLayout() {
 
     const handleUrl = ({ url }: { url: string }) => {
       if (registry.routeProtocol(url)) {
-        void walletProtocolService.handleUri(url);
+        walletProtocolService.handleUri(url).then((result) => {
+          setPendingDeepLink(result);
+        });
       }
     };
 
@@ -76,7 +81,9 @@ export default function RootLayout() {
     // Also check if the app was cold-started with a URL
     void Linking.getInitialURL().then((url) => {
       if (url && registry.routeProtocol(url)) {
-        void walletProtocolService.handleUri(url);
+        walletProtocolService.handleUri(url).then((result) => {
+          setPendingDeepLink(result);
+        });
       }
     });
 

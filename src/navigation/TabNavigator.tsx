@@ -1,10 +1,13 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Wallet, Briefcase, QrCode, Activity, User } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
 import { TabParamList } from './types';
+import type { RootStackParamList } from './types';
 import { useTheme } from '@/hooks/useTheme';
 import { useTranslation } from '@/hooks/useTranslation';
 import { COLORS } from '@/constants/colors';
@@ -13,6 +16,7 @@ import ServicesScreen from '@/screens/services/ServicesScreen';
 import ScanScreen from '@/screens/scan/ScanScreen';
 import ActivityScreen from '@/screens/activity/ActivityScreen';
 import ProfileScreen from '@/screens/profile/ProfileScreen';
+import { useDeepLinkStore } from '@/store/deepLinkStore';
 
 const Tab = createBottomTabNavigator<TabParamList>();
 
@@ -31,6 +35,27 @@ function ScanTabButton({ children, onPress }: { children: React.ReactNode; onPre
 export default function TabNavigator() {
   const { colors, isDark } = useTheme();
   const { t } = useTranslation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { pending, clear } = useDeepLinkStore();
+
+  // Dispatch deep-link protocol results that arrived while outside the navigator
+  useEffect(() => {
+    if (!pending) return;
+    if (pending.type === 'presentation_request') {
+      clear();
+      navigation.navigate('PresentationConfirm', { request: pending.request });
+    } else if (pending.type === 'credential_received') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      clear();
+      // Already persisted by walletProtocolService; stay on Main (wallet tab)
+    } else if (pending.type === 'error') {
+      clear();
+      // Errors from background deep links are silently dropped here.
+      // ScanScreen handles errors from user-initiated scans with Alert.
+    } else {
+      clear();
+    }
+  }, [pending]);
 
   return (
     <Tab.Navigator
