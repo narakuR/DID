@@ -11,6 +11,7 @@ import RevokeConfirmationScreen from '@/screens/credential/RevokeConfirmationScr
 import RenewalScreen from '@/screens/credential/RenewalScreen';
 import IssuanceScreen from '@/screens/credential/IssuanceScreen';
 import NotificationsScreen from '@/screens/wallet/NotificationsScreen';
+import PresentationConfirmScreen from '@/screens/presentation/PresentationConfirmScreen';
 
 // expo-router already provides a NavigationContainer at the root (_layout.tsx).
 // We must NOT add a second one here — just use Stack.Navigator directly.
@@ -39,6 +40,11 @@ export default function RootNavigator() {
         options={{ presentation: 'modal' }}
       />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
+      <Stack.Screen
+        name="PresentationConfirm"
+        component={PresentationConfirmScreen}
+        options={{ presentation: 'modal' }}
+      />
     </Stack.Navigator>
   );
 }

@@ -64,7 +64,7 @@ export interface CloudSyncState {
 
 export type AuthMethod = 'BIO' | 'PIN';
 
-export type DIDMethod = 'did:key' | 'did:ebsi' | 'did:ion';
+export type DIDMethod = 'did:key' | 'did:jwk' | 'did:web' | 'did:ebsi' | 'did:ion';
 
 export type KeyAlgorithm = 'Ed25519' | 'ES256K' | 'P-256';
 
@@ -80,9 +80,10 @@ export interface DIDDocument {
   id: string;
   verificationMethod: {
     id: string;
-    type: 'Ed25519VerificationKey2020' | 'EcdsaSecp256k1VerificationKey2019';
+    type: 'Ed25519VerificationKey2020' | 'EcdsaSecp256k1VerificationKey2019' | 'JsonWebKey2020';
     controller: string;
     publicKeyMultibase: string;
+    publicKeyJwk?: Record<string, string>;
   }[];
   authentication: string[];
   assertionMethod: string[];

@@ -1,3 +1,6 @@
+> ⚠️ **已废弃**：本文档规划的原生 Swift/Kotlin Bridge 方案已被纯 JS 可插拔架构取代。
+> 新方案使用 `oid4vc-ts` + `@noble/curves`，详见 `src/plugins/` 目录。
+
 # EUDI Wallet Core 集成设计稿
 
 本文档给出一个面向当前项目的、可执行的 EUDI Wallet Core 集成设计。

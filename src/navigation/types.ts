@@ -1,4 +1,5 @@
 import { VerifiableCredential } from '@/types';
+import type { PendingPresentationRequest } from '@/plugins/types';
 
 export type RootStackParamList = {
   Onboarding: undefined;
@@ -9,6 +10,7 @@ export type RootStackParamList = {
   Renewal: { credentialId: string };
   Issuance: undefined;
   Notifications: undefined;
+  PresentationConfirm: { request: PendingPresentationRequest };
 };
 
 export type TabParamList = {

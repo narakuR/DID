@@ -6,6 +6,7 @@ import {
   StyleSheet,
   SafeAreaView,
   Animated,
+  Alert,
   Dimensions,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -22,6 +23,8 @@ import { useTheme } from '@/hooks/useTheme';
 import { COLORS } from '@/constants/colors';
 import CredentialCard from '@/components/CredentialCard';
 import Modal from '@/components/Modal';
+import { registry } from '@/plugins/registry';
+import { walletProtocolService } from '@/services/walletProtocolService';
 
 const { width: SW } = Dimensions.get('window');
 const FRAME_SIZE = SW * 0.72;
@@ -76,6 +79,36 @@ export default function ScanScreen() {
     }
   }, [isFocused, permission, requestPermission]);
 
+  async function handleBarcodeScan(data: string) {
+    if (scanned) return;
+    setScanned(true);
+    setProcessing(true);
+
+    // Check if it's a protocol URI we can handle (OID4VCI, etc.)
+    if (registry.routeProtocol(data)) {
+      const result = await walletProtocolService.handleUri(data);
+      setProcessing(false);
+
+      if (result.type === 'credential_received') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        navigation.navigate('Main');
+      } else if (result.type === 'presentation_request') {
+        navigation.navigate('PresentationConfirm', { request: result.request });
+        setScanned(false);
+      } else if (result.type === 'redirect') {
+        Alert.alert('Browser redirect required', result.url.slice(0, 80) + '…');
+        setScanned(false);
+      } else if (result.type === 'error') {
+        Alert.alert('Error', result.message);
+        setScanned(false);
+      }
+      return;
+    }
+
+    // Fallback: mock demo flow
+    await handleDemo();
+  }
+
   async function handleDemo() {
     setProcessing(true);
     await new Promise((r) => setTimeout(r, 1500));
@@ -124,11 +157,8 @@ export default function ScanScreen() {
             style={StyleSheet.absoluteFill}
             facing="back"
             barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-            onBarcodeScanned={scanned ? undefined : () => {
-              if (!scanned) {
-                setScanned(true);
-                handleDemo();
-              }
+            onBarcodeScanned={scanned ? undefined : ({ data }) => {
+              void handleBarcodeScan(data);
             }}
           />
         ) : (
