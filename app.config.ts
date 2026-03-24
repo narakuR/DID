@@ -1,6 +1,6 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { ExpoConfig, ConfigContext } from 'expo/config';
+import { ConfigContext, ExpoConfig } from 'expo/config';
+import fs from 'fs';
+import path from 'path';
 
 export default function defineAppConfig({ config }: ConfigContext): ExpoConfig {
   const googleServicesJsonPath = path.resolve(__dirname, 'google-services.json');
