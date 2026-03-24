@@ -59,8 +59,8 @@ const withAndroidFirebaseNativeSetup = (config) => {
     'android',
     async (mod) => {
       const googleServicesFile =
-        mod.config.android?.googleServicesFile ||
-        mod.config.android?.googleServicesFile?.toString();
+        mod.android?.googleServicesFile ||
+        mod.android?.googleServicesFile?.toString();
 
       if (!googleServicesFile) {
         return mod;
@@ -71,7 +71,7 @@ const withAndroidFirebaseNativeSetup = (config) => {
       const targetPath = path.join(
         mod.modRequest.platformProjectRoot,
         'app',
-        AndroidConfig.Paths.GoogleServices.getFilePath()
+        'google-services.json'
       );
 
       if (!fs.existsSync(sourcePath)) {
