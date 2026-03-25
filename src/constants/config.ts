@@ -1,5 +1,5 @@
 export const CONFIG = {
-  API_BASE_URL: process.env.EXPO_PUBLIC_API_BASE_URL || 'https://wallet.naraku.xyz',
+  API_BASE_URL: process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:3000',
   INACTIVITY_LIMIT_MS: 5 * 60 * 1000,
   OTP_DEMO_CODE: '123456',
   OTP_RESEND_COOLDOWN_S: 30,
