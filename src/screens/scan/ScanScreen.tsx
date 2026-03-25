@@ -9,8 +9,9 @@ import {
   Alert,
   Dimensions,
 } from 'react-native';
-import { CameraView, useCameraPermissions } from 'expo-camera';
-import { X, Camera } from 'lucide-react-native';
+import { CameraView, useCameraPermissions, scanFromURLAsync } from 'expo-camera';
+import * as ImagePicker from 'expo-image-picker';
+import { X, Camera, ImageIcon } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -136,6 +137,25 @@ export default function ScanScreen() {
     setScanned(false);
   }
 
+  async function handlePickImage() {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 1,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    const uri = result.assets[0].uri;
+    try {
+      const barcodes = await scanFromURLAsync(uri, ['qr']);
+      if (barcodes.length === 0) {
+        Alert.alert('未识别到二维码', '请选择包含二维码的图片');
+        return;
+      }
+      await handleBarcodeScan(barcodes[0].data);
+    } catch {
+      Alert.alert('识别失败', '无法从该图片中读取二维码');
+    }
+  }
+
   const hasPermission = permission?.granted;
   const shouldRenderCamera = isFocused && hasPermission;
 
@@ -147,7 +167,9 @@ export default function ScanScreen() {
           <X color="#FFFFFF" size={24} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Scan QR Code</Text>
-        <View style={styles.headerButton} />
+        <TouchableOpacity onPress={handlePickImage} style={styles.headerButton}>
+          <ImageIcon color="#FFFFFF" size={24} />
+        </TouchableOpacity>
       </View>
 
       {/* Camera / Demo */}
