@@ -33,6 +33,7 @@ export const CONFIG = {
 export const STORAGE_KEYS = {
   CREDENTIALS: '@did_wallet/credentials',
   STORED_CREDENTIALS: '@did_wallet/stored_credentials',
+  PENDING_OID4VCI_AUTH: '@did_wallet/pending_oid4vci_auth',
   AUTH_STATE: '@did_wallet/auth_state',
   SETTINGS: '@did_wallet/settings',
   ACTIVITY_LOGS: '@did_wallet/activity_logs',

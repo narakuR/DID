@@ -20,9 +20,21 @@ class WalletProtocolService {
   private async _buildCtx() {
     const walletState = useWalletStore.getState();
     const metadata = await didKeyProvider.getStoredMetadata();
+    const repositoryCredentials = credentialRepository
+      .getAll()
+      .map((stored) => stored.displayModel);
+    const credentials = Array.from(
+      new Map(
+        [...walletState.credentials, ...repositoryCredentials].map((credential) => [
+          credential.id,
+          credential,
+        ])
+      ).values()
+    );
+
     return {
       registry,
-      credentials: walletState.credentials,
+      credentials,
       activeDid: metadata?.did ?? '',
     };
   }

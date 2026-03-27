@@ -114,11 +114,49 @@ const signJwtCallback = async (
   jwtSigner: JwtSigner,
   jwt: { header: JwtHeader; payload: JwtPayload }
 ): Promise<{ jwt: string; signerJwk: Jwk }> => {
-  const meta = await didKeyProvider.getStoredMetadata();
-  if (!meta) throw new Error('No active DID found. Please generate a DID first.');
+  const resolveSigner = async (): Promise<{
+    keyId: string;
+    did: string;
+    sign: (input: Uint8Array, keyId: string) => Promise<Uint8Array>;
+    signerJwk: Jwk;
+  }> => {
+    if (jwtSigner.method === 'jwk') {
+      const meta = await didJwkProvider.getStoredMetadata();
+      if (!meta) throw new Error('No ES256 DID found. Please generate a DID:JWK first.');
+      return {
+        keyId: meta.keyId,
+        did: meta.did,
+        sign: (input, keyId) => didJwkProvider.sign(input, keyId),
+        signerJwk: (jwtSigner as { method: 'jwk'; publicJwk: Jwk }).publicJwk,
+      };
+    }
 
-  const keyId = meta.keyId;
-  const did = meta.did;
+    if (jwtSigner.method === 'did') {
+      const didUrl = (jwtSigner as { method: 'did'; didUrl: string }).didUrl;
+      if (didUrl.startsWith('did:jwk:')) {
+        const meta = await didJwkProvider.getStoredMetadata();
+        if (!meta) throw new Error('No ES256 DID found. Please generate a DID:JWK first.');
+        const doc = await didJwkProvider.resolve(meta.did);
+        return {
+          keyId: meta.keyId,
+          did: meta.did,
+          sign: (input, keyId) => didJwkProvider.sign(input, keyId),
+          signerJwk: doc.verificationMethod[0].publicKeyJwk as Jwk,
+        };
+      }
+    }
+
+    const meta = await didKeyProvider.getStoredMetadata();
+    if (!meta) throw new Error('No active DID found. Please generate a DID first.');
+    return {
+      keyId: meta.keyId,
+      did: meta.did,
+      sign: (input, keyId) => didKeyProvider.sign(input, keyId),
+      signerJwk: pubJwkFromDidKey(meta.did),
+    };
+  };
+
+  const signer = await resolveSigner();
 
   // Build the signing input: base64url(header).base64url(payload)
   const headerStr = stringToBase64Url(JSON.stringify(jwt.header));
@@ -126,17 +164,9 @@ const signJwtCallback = async (
   const signingInput = `${headerStr}.${payloadStr}`;
 
   const signingInputBytes = new TextEncoder().encode(signingInput);
-  const signatureBytes = await didKeyProvider.sign(signingInputBytes, keyId);
+  const signatureBytes = await signer.sign(signingInputBytes, signer.keyId);
   const compactJwt = `${signingInput}.${bytesToBase64Url(signatureBytes)}`;
-
-  let signerJwk: Jwk;
-  if (jwtSigner.method === 'jwk') {
-    signerJwk = (jwtSigner as { method: 'jwk'; publicJwk: Jwk }).publicJwk;
-  } else {
-    signerJwk = pubJwkFromDidKey(did);
-  }
-
-  return { jwt: compactJwt, signerJwk };
+  return { jwt: compactJwt, signerJwk: signer.signerJwk };
 };
 
 // ── Public factories ──────────────────────────────────────────────────────────

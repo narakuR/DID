@@ -27,6 +27,7 @@ import { MdocFormat } from '@/plugins/formats/MdocFormat';
 import { oid4vciHandler } from '@/plugins/protocols/Oid4vciHandler';
 import { oid4vpHandler } from '@/plugins/protocols/Oid4vpHandler';
 import { walletProtocolService } from '@/services/walletProtocolService';
+import { INTEGRATION_CONFIG } from '@/config/integration';
 
 // ── Plugin registry initialization ───────────────────────────────────────────
 // Register built-in plugins once at module load time (synchronous, cheap).
@@ -69,7 +70,15 @@ export default function RootLayout() {
   useEffect(() => {
     if (!allHydrated) return;
 
+    const isHandledByAuthSession = (url: string) =>
+      url.startsWith(INTEGRATION_CONFIG.app.issuanceRedirectUri) ||
+      url.startsWith(INTEGRATION_CONFIG.app.presentationRedirectUri);
+
     const handleUrl = ({ url }: { url: string }) => {
+      if (isHandledByAuthSession(url)) {
+        return;
+      }
+
       if (registry.routeProtocol(url)) {
         walletProtocolService.handleUri(url).then((result) => {
           setPendingDeepLink(result);
@@ -80,7 +89,7 @@ export default function RootLayout() {
     const subscription = Linking.addEventListener('url', handleUrl);
     // Also check if the app was cold-started with a URL
     void Linking.getInitialURL().then((url) => {
-      if (url && registry.routeProtocol(url)) {
+      if (url && !isHandledByAuthSession(url) && registry.routeProtocol(url)) {
         walletProtocolService.handleUri(url).then((result) => {
           setPendingDeepLink(result);
         });
