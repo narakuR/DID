@@ -10,12 +10,13 @@ import { ArrowLeft, CheckCircle, RefreshCw } from 'lucide-react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-import { useWalletStore } from '@/store/walletStore';
+import { useWalletWriteStore } from '@/store/walletWriteStore';
 import { RootStackParamList } from '@/navigation/types';
 import { CONFIG } from '@/constants/config';
 import { useTheme } from '@/hooks/useTheme';
 import { COLORS } from '@/constants/colors';
 import LoadingOverlay from '@/components/LoadingOverlay';
+import { useDocumentStore } from '@/wallet-core/domain/DocumentStore';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'Renewal'>;
@@ -26,10 +27,9 @@ export default function RenewalScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const { colors } = useTheme();
-  const getCredential = useWalletStore((s) => s.getCredential);
-  const updateCredential = useWalletStore((s) => s.updateCredential);
+  const updateCredential = useWalletWriteStore((s) => s.updateCredential);
+  const credential = useDocumentStore((s) => s.getDocument(route.params.credentialId)?.credential);
 
-  const credential = getCredential(route.params.credentialId);
   const [state, setState] = useState<RenewalState>('idle');
   const [newExpiryYear, setNewExpiryYear] = useState<number | null>(null);
 

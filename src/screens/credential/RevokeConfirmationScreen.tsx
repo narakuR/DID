@@ -12,11 +12,12 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
 
-import { useWalletStore } from '@/store/walletStore';
+import { useWalletWriteStore } from '@/store/walletWriteStore';
 import { biometricService } from '@/services/biometricService';
 import { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/hooks/useTheme';
 import { COLORS } from '@/constants/colors';
+import { useDocumentStore } from '@/wallet-core/domain/DocumentStore';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'RevokeConfirmation'>;
@@ -27,10 +28,9 @@ export default function RevokeConfirmationScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const { colors } = useTheme();
-  const getCredential = useWalletStore((s) => s.getCredential);
-  const revokeCredential = useWalletStore((s) => s.revokeCredential);
+  const revokeCredential = useWalletWriteStore((s) => s.revokeCredential);
+  const credential = useDocumentStore((s) => s.getDocument(route.params.credentialId)?.credential);
 
-  const credential = getCredential(route.params.credentialId);
   const [step, setStep] = useState<RevokeStep>('confirm');
   const bioOpacity = useRef(new Animated.Value(1)).current;
 

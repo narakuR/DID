@@ -18,8 +18,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '@/navigation/types';
 import { useTheme } from '@/hooks/useTheme';
 import { COLORS } from '@/constants/colors';
-import { registry } from '@/plugins/registry';
 import { protocolFlowService } from '@/services/protocolFlowService';
+import { walletRegistry } from '@/wallet-core/registry/walletRegistry';
 
 const { width: SW } = Dimensions.get('window');
 const FRAME_SIZE = SW * 0.72;
@@ -88,7 +88,7 @@ export default function ScanScreen() {
   async function handleProtocolUri(data: string) {
     setProcessing(true);
     try {
-      if (!registry.routeProtocol(data)) {
+      if (!walletRegistry.routeProtocol(data)) {
         Alert.alert(
           '暂不支持的二维码',
           '当前只支持 issuer 的 credential offer 和 verifier 的 OpenID4VP 请求。'

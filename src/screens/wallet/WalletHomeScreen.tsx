@@ -15,18 +15,18 @@ import { Bell, Plus, ChevronDown, ChevronUp } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-import { useWalletStore } from '@/store/walletStore';
 import { useAuthStore } from '@/store/authStore';
 import { useNotificationStore } from '@/store/notificationStore';
 import { RootStackParamList } from '@/navigation/types';
-import { VerifiableCredential, IssuerType } from '@/types';
-import { getCredentialStatus } from '@/utils/credentialUtils';
+import { IssuerType } from '@/types';
 import { useTheme } from '@/hooks/useTheme';
 import { COLORS } from '@/constants/colors';
 import SearchBar from '@/components/SearchBar';
 import FilterChips from '@/components/FilterChips';
 import CredentialCard from '@/components/CredentialCard';
 import AlphaIndex from '@/components/AlphaIndex';
+import { useDocumentStore } from '@/wallet-core/facade';
+import type { WalletDocument } from '@/wallet-core/facade';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -39,7 +39,7 @@ const FILTERS = ['All', ...Object.values(IssuerType)];
 export default function WalletHomeScreen() {
   const navigation = useNavigation<Nav>();
   const { colors } = useTheme();
-  const credentials = useWalletStore((s) => s.credentials);
+  const documents = useDocumentStore((s) => s.documents);
   const user = useAuthStore((s) => s.user);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -53,7 +53,7 @@ export default function WalletHomeScreen() {
 
   // Filtered credentials
   const filteredCredentials = useMemo(() => {
-    let list = credentials;
+    let list = documents;
     if (selectedFilter !== 'All') {
       list = list.filter((c) => c.issuer.type === selectedFilter);
     }
@@ -61,18 +61,18 @@ export default function WalletHomeScreen() {
       const q = searchQuery.toLowerCase();
       list = list.filter(
         (c) =>
-          c.visual?.title?.toLowerCase().includes(q) ||
-          c.visual?.description?.toLowerCase().includes(q) ||
+          c.title.toLowerCase().includes(q) ||
+          c.description?.toLowerCase().includes(q) ||
           c.issuer.name.toLowerCase().includes(q)
       );
     }
     return list;
-  }, [credentials, selectedFilter, searchQuery]);
+  }, [documents, selectedFilter, searchQuery]);
 
   // Grouped credentials (only when no search)
   const groupedCredentials = useMemo(() => {
     if (searchQuery.trim()) return null;
-    const groups: Record<string, VerifiableCredential[]> = {};
+    const groups: Record<string, WalletDocument[]> = {};
     for (const c of filteredCredentials) {
       const key = c.issuer.type;
       if (!groups[key]) groups[key] = [];
@@ -85,7 +85,7 @@ export default function WalletHomeScreen() {
   const activeLetters = useMemo(() => {
     const letters = new Set<string>();
     for (const c of filteredCredentials) {
-      const first = (c.visual?.title ?? c.type[0])?.[0]?.toUpperCase();
+      const first = (c.title ?? c.types[0])?.[0]?.toUpperCase();
       if (first) letters.add(first);
     }
     return letters;
@@ -106,7 +106,7 @@ export default function WalletHomeScreen() {
 
   function handleAlphaPress(letter: string) {
     const idx = filteredCredentials.findIndex(
-      (c) => (c.visual?.title ?? c.type[0])?.[0]?.toUpperCase() === letter
+      (c) => (c.title ?? c.types[0])?.[0]?.toUpperCase() === letter
     );
     if (idx >= 0) {
       listRef.current?.scrollToIndex({ index: idx, animated: true });
@@ -123,18 +123,18 @@ export default function WalletHomeScreen() {
   // Build flat list items for grouped mode
   type ListItem =
     | { type: 'header'; groupType: string }
-    | { type: 'credential'; credential: VerifiableCredential };
+    | { type: 'document'; document: WalletDocument };
 
   const listData: ListItem[] = useMemo(() => {
     if (searchQuery.trim() || !groupedCredentials) {
-      return filteredCredentials.map((c) => ({ type: 'credential' as const, credential: c }));
+      return filteredCredentials.map((document) => ({ type: 'document' as const, document }));
     }
     const items: ListItem[] = [];
     for (const [groupType, creds] of Object.entries(groupedCredentials)) {
       items.push({ type: 'header', groupType });
       if (!collapsedGroups.has(groupType)) {
-        for (const c of creds) {
-          items.push({ type: 'credential', credential: c });
+        for (const document of creds) {
+          items.push({ type: 'document', document });
         }
       }
     }
@@ -161,8 +161,8 @@ export default function WalletHomeScreen() {
       );
     }
 
-    const { credential } = item;
-    const isHighlighted = credential.id === highlightedId;
+    const { document } = item;
+    const isHighlighted = document.id === highlightedId;
 
     return (
       <TouchableOpacity
@@ -171,11 +171,11 @@ export default function WalletHomeScreen() {
           isHighlighted && styles.highlighted,
         ]}
         onPress={() =>
-          navigation.navigate('CredentialDetail', { credentialId: credential.id })
+          navigation.navigate('CredentialDetail', { credentialId: document.id })
         }
         activeOpacity={0.85}
       >
-        <CredentialCard credential={credential} showStatus />
+        <CredentialCard document={document} showStatus />
       </TouchableOpacity>
     );
   }
@@ -225,7 +225,7 @@ export default function WalletHomeScreen() {
           ref={listRef}
           data={listData}
           keyExtractor={(item, index) =>
-            item.type === 'header' ? `header-${item.groupType}` : item.credential.id
+            item.type === 'header' ? `header-${item.groupType}` : item.document.id
           }
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}

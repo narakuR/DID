@@ -22,9 +22,9 @@ import { COLORS } from '@/constants/colors';
 import { MOCK_ACTIVITY_LOGS } from '@/constants/mockData';
 import { useTheme } from '@/hooks/useTheme';
 import { RootStackParamList } from '@/navigation/types';
+import { useDocumentStore } from '@/wallet-core/facade';
 import { biometricService } from '@/services/biometricService';
 import { geminiService } from '@/services/geminiService';
-import { useWalletStore } from '@/store/walletStore';
 import { getCredentialStatus } from '@/utils/credentialUtils';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -34,7 +34,7 @@ export default function CredentialDetailScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const { colors } = useTheme();
-  const getCredential = useWalletStore((s) => s.getCredential);
+  const document = useDocumentStore((s) => s.getDocument(route.params.credentialId));
 
   // All hooks must be called before any conditional return
   const [aiText, setAiText] = useState<string | null>(null);
@@ -46,21 +46,21 @@ export default function CredentialDetailScreen() {
   const [shareCountdown, setShareCountdown] = useState(300);
   const shareTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const credential = getCredential(route.params.credentialId);
-  if (!credential) {
+  if (!document) {
     return (
       <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
-        <Text style={{ color: colors.text }}>Credential not found.</Text>
+        <Text style={{ color: colors.text }}>Document not found.</Text>
       </SafeAreaView>
     );
   }
 
+  const credential = document.credential;
   const statusInfo = getCredentialStatus(credential);
-  const activityLogs = MOCK_ACTIVITY_LOGS.filter((l) => l.credentialId === credential.id);
+  const activityLogs = MOCK_ACTIVITY_LOGS.filter((l) => l.credentialId === document.id);
 
   async function handleAiExplain() {
     setAiLoading(true);
-    const result = await geminiService.explainCredential(credential!);
+    const result = await geminiService.explainCredential(credential);
     setAiText(result);
     setAiLoading(false);
     aiFadeAnim.setValue(0);
@@ -133,7 +133,7 @@ export default function CredentialDetailScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Card */}
-        <CredentialCard credential={credential} showStatus />
+        <CredentialCard document={document} showStatus />
 
         {/* Verification status */}
         <View style={[styles.verificationBlock, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -150,11 +150,11 @@ export default function CredentialDetailScreen() {
         {/* Metadata section */}
         <DataSection icon={<Info color={COLORS.euBlue} size={16} />} title="Metadata">
           <DataRow label="Type" value={credential.type.slice(-1)[0]} />
-          <DataRow label="Credential ID" value={credential.id} copiable monospace />
-          <DataRow label="Issued" value={new Date(credential.issuanceDate).toLocaleDateString()} />
+          <DataRow label="Document ID" value={document.id} copiable monospace />
+          <DataRow label="Issued" value={new Date(document.issuanceDate).toLocaleDateString()} />
           <DataRow
             label="Expires"
-            value={new Date(credential.expirationDate).toLocaleDateString()}
+            value={new Date(document.expirationDate).toLocaleDateString()}
             highlighted={statusInfo.isExpired}
           />
         </DataSection>

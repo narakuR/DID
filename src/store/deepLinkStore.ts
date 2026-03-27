@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ProtocolResult } from '@/plugins/types';
+import type { WalletOperation } from '@/wallet-core/domain/models';
 
 /**
  * Lightweight bridge between the deep-link handler in _layout.tsx (outside the
@@ -8,8 +8,8 @@ import type { ProtocolResult } from '@/plugins/types';
  * _layout.tsx writes here; TabNavigator reads and clears.
  */
 interface DeepLinkStore {
-  pending: ProtocolResult | null;
-  setPending: (result: ProtocolResult) => void;
+  pending: WalletOperation | null;
+  setPending: (result: WalletOperation) => void;
   clear: () => void;
 }
 

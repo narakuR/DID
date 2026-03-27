@@ -23,7 +23,7 @@ import {
 import * as Haptics from 'expo-haptics';
 
 import { useAuthStore } from '@/store/authStore';
-import { useWalletStore } from '@/store/walletStore';
+import { useWalletWriteStore } from '@/store/walletWriteStore';
 import { biometricService } from '@/services/biometricService';
 import { useTheme } from '@/hooks/useTheme';
 import { COLORS } from '@/constants/colors';
@@ -49,7 +49,7 @@ type PinSubStep = 'enter' | 'confirm';
 export default function OnboardingScreen() {
   const { colors } = useTheme();
   const { completeOnboarding, updateCloudSync } = useAuthStore();
-  const { restoreWallet, clearWallet } = useWalletStore();
+  const { restoreWallet, clearWallet } = useWalletWriteStore();
 
   const [step, setStep] = useState<Step>('WELCOME');
   const [selectedAuth, setSelectedAuth] = useState<AuthMethod>('BIO');

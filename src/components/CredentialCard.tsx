@@ -6,9 +6,11 @@ import { Globe, ShieldOff } from 'lucide-react-native';
 import { VerifiableCredential } from '@/types';
 import { getGradientColors } from '@/constants/colors';
 import { getCredentialStatus } from '@/utils/credentialUtils';
+import type { WalletDocument } from '@/wallet-core/facade';
 
 interface CredentialCardProps {
-  credential: VerifiableCredential;
+  credential?: VerifiableCredential;
+  document?: WalletDocument;
   showStatus?: boolean;
   width?: number;
 }
@@ -16,13 +18,23 @@ interface CredentialCardProps {
 // ISO 7810 ID-1 aspect ratio: 85.60mm × 53.98mm ≈ 1.586:1
 const ASPECT_RATIO = 85.6 / 53.98;
 
-export default function CredentialCard({ credential, showStatus = false, width }: CredentialCardProps) {
+export default function CredentialCard({
+  credential,
+  document,
+  showStatus = false,
+  width,
+}: CredentialCardProps) {
+  const resolvedCredential = document?.credential ?? credential;
+  if (!resolvedCredential) {
+    return null;
+  }
+
   const [cardWidth, setCardWidth] = React.useState(width ?? 0);
   const cardHeight = cardWidth > 0 ? cardWidth / ASPECT_RATIO : 0;
 
-  const gradientKey = credential.visual?.gradientKey ?? 'eu';
+  const gradientKey = document?.credential.visual?.gradientKey ?? resolvedCredential.visual?.gradientKey ?? 'eu';
   const [colorStart, colorEnd] = getGradientColors(gradientKey);
-  const statusInfo = showStatus ? getCredentialStatus(credential) : null;
+  const statusInfo = showStatus ? getCredentialStatus(resolvedCredential) : null;
   const isInactive = statusInfo?.isRevoked || statusInfo?.isExpired;
 
   function onLayout(e: LayoutChangeEvent) {
@@ -31,7 +43,7 @@ export default function CredentialCard({ credential, showStatus = false, width }
     }
   }
 
-  const shortId = credential.id.replace('urn:uuid:', '').slice(0, 8).toUpperCase();
+  const shortId = resolvedCredential.id.replace('urn:uuid:', '').slice(0, 8).toUpperCase();
 
   return (
     <View
@@ -58,11 +70,11 @@ export default function CredentialCard({ credential, showStatus = false, width }
       {/* Title */}
       <View style={styles.body}>
         <Text style={styles.title} numberOfLines={2}>
-          {credential.visual?.title ?? credential.type[credential.type.length - 1]}
+          {document?.title ?? resolvedCredential.visual?.title ?? resolvedCredential.type[resolvedCredential.type.length - 1]}
         </Text>
-        {credential.visual?.description ? (
+        {(document?.description ?? resolvedCredential.visual?.description) ? (
           <Text style={styles.description} numberOfLines={1}>
-            {credential.visual.description}
+            {document?.description ?? resolvedCredential.visual?.description}
           </Text>
         ) : null}
       </View>
@@ -70,7 +82,7 @@ export default function CredentialCard({ credential, showStatus = false, width }
       {/* Footer */}
       <View style={styles.footer}>
         <Text style={styles.issuer} numberOfLines={1}>
-          {credential.issuer.name}
+          {document?.issuer.name ?? resolvedCredential.issuer.name}
         </Text>
         <Text style={styles.credId}>#{shortId}</Text>
       </View>

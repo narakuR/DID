@@ -42,7 +42,8 @@ export interface VerifiableCredential {
 /**
  * Persistent credential record that separates raw token, parsed metadata, and
  * the display model. This is the authoritative store for credential data — the
- * walletStore holds only the displayModel for UI rendering.
+ * wallet domain read model is exposed through DocumentStore / DocumentManager,
+ * while walletWriteStore is reserved for wallet write actions and UI hydration.
  */
 export interface StoredCredential {
   /** Matches displayModel.id */

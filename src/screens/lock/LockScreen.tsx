@@ -10,7 +10,7 @@ import { Fingerprint, ShieldCheck, RotateCcw } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
 import { useAuthStore } from '@/store/authStore';
-import { useWalletStore } from '@/store/walletStore';
+import { useWalletWriteStore } from '@/store/walletWriteStore';
 import { biometricService } from '@/services/biometricService';
 import { useTheme } from '@/hooks/useTheme';
 import { COLORS } from '@/constants/colors';
@@ -18,7 +18,7 @@ import PinPad from '@/components/PinPad';
 
 export default function LockScreen() {
   const { user, unlockWallet, logout } = useAuthStore();
-  const { clearWallet } = useWalletStore();
+  const { clearWallet } = useWalletWriteStore();
   const { colors } = useTheme();
 
   const [pin, setPin] = useState('');

@@ -26,14 +26,14 @@ export default function PresentationConfirmScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const { colors } = useTheme();
-  const { request } = route.params;
+  const { session } = route.params;
 
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
 
   async function handleConfirm() {
     setLoading(true);
-    const result = await walletProtocolService.submitPresentation(request.presentationId);
+    const result = await walletProtocolService.submitPresentation(session.presentationId);
     setLoading(false);
 
     if (result.type === 'presentation_sent') {
@@ -75,7 +75,7 @@ export default function PresentationConfirmScreen() {
           <View style={styles.verifierInfo}>
             <Text style={[styles.verifierLabel, { color: colors.textSecondary }]}>Requesting party</Text>
             <Text style={[styles.verifierName, { color: colors.text }]} numberOfLines={2}>
-              {request.verifier}
+              {session.verifier}
             </Text>
           </View>
         </View>
@@ -83,9 +83,9 @@ export default function PresentationConfirmScreen() {
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Credentials to share</Text>
         <Text style={[styles.sectionDesc, { color: colors.textSecondary }]}>The following credentials and fields will be shared with the verifier.</Text>
 
-        {request.matches.map((match, i) => (
+        {session.matches.map((match, i) => (
           <View key={`${match.queryId}-${i}`} style={styles.matchItem}>
-            <CredentialCard credential={match.credential} />
+            <CredentialCard document={match.document} />
             {match.disclosedClaims.length > 0 && (
               <View style={[styles.claimsBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <Text style={[styles.claimsTitle, { color: colors.textSecondary }]}>Fields being shared:</Text>

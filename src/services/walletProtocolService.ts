@@ -1,43 +1,47 @@
-import { registry } from '@/plugins/registry';
-import type { ProtocolResult } from '@/plugins/types';
-import { useWalletStore } from '@/store/walletStore';
-import { didKeyProvider } from '@/plugins/did/DidKeyProvider';
-import { oid4vpHandler } from '@/plugins/protocols/Oid4vpHandler';
+import type { ProtocolResult } from '@/wallet-core/types/protocol';
+import { useWalletWriteStore } from '@/store/walletWriteStore';
 import { credentialRepository } from './credentialRepository';
-import type { StoredCredential } from '@/types';
+import { WalletCore } from '@/wallet-core/facade';
+import type { WalletOperation } from '@/wallet-core/domain/models';
+import { documentManager } from '@/wallet-core/domain/DocumentManager';
 
 /**
  * WalletProtocolService
  *
  * Orchestrates protocol handling:
  *  1. Routes a URI to the correct IProtocolHandler via the plugin registry
- *  2. Supplies context (credentials, activeDid) from Zustand stores
- *  3. Persists received credentials back to walletStore
+ *  2. Supplies context from wallet domain read models
+ *  3. Persists received credentials through repository + wallet write store
  *
  * Designed to be called from UI (ScanScreen) or deep-link handler (_layout.tsx).
  */
 class WalletProtocolService {
-  private async _buildCtx() {
-    const walletState = useWalletStore.getState();
-    const metadata = await didKeyProvider.getStoredMetadata();
-    const repositoryCredentials = credentialRepository
-      .getAll()
-      .map((stored) => stored.displayModel);
-    const credentials = Array.from(
-      new Map(
-        [...walletState.credentials, ...repositoryCredentials].map((credential) => [
-          credential.id,
-          credential,
-        ])
-      ).values()
-    );
+  private readonly walletCore = new WalletCore({
+    loadState: async () => {
+      const repositoryCredentials = credentialRepository
+        .getAll()
+        .map((stored) => stored.displayModel);
+      const walletDocuments = documentManager.listCredentials();
+      const credentials = Array.from(
+        new Map(
+          [...walletDocuments, ...repositoryCredentials].map((credential) => [
+            credential.id,
+            credential,
+          ])
+        ).values()
+      );
 
-    return {
-      registry,
-      credentials,
-      activeDid: metadata?.did ?? '',
-    };
-  }
+      return {
+        credentials,
+        activeDid: '',
+      };
+    },
+    persistence: {
+      saveIssuedCredential: (stored) => credentialRepository.save(stored),
+      addDisplayCredential: (credential) =>
+        useWalletWriteStore.getState().addCredential(credential),
+    },
+  });
 
   /**
    * Process a scanned / deep-linked URI.
@@ -45,35 +49,11 @@ class WalletProtocolService {
    * For OID4VP: returns `presentation_request` — caller must navigate to confirm screen.
    */
   async handleUri(uri: string): Promise<ProtocolResult> {
-    const handler = registry.routeProtocol(uri);
-    if (!handler) {
-      return { type: 'error', message: `No handler registered for URI: ${uri.slice(0, 60)}` };
-    }
+    return this.walletCore.handleUri(uri);
+  }
 
-    const ctx = await this._buildCtx();
-    const result = await handler.handle(uri, ctx);
-
-    // Auto-persist issued credentials
-    if (result.type === 'credential_received') {
-      const { addCredential } = useWalletStore.getState();
-      for (const credential of result.credentials) {
-        // Save to CredentialRepository (raw + display model separated)
-        if (credential._raw) {
-          const stored: StoredCredential = {
-            id: credential.id,
-            format: (credential._format ?? 'jwt_vc_json') as StoredCredential['format'],
-            raw: credential._raw,
-            storedAt: new Date().toISOString(),
-            displayModel: credential,
-          };
-          await credentialRepository.save(stored);
-        }
-        // Also save display model to walletStore for UI rendering
-        await addCredential(credential);
-      }
-    }
-
-    return result;
+  async handleUriOperation(uri: string): Promise<WalletOperation> {
+    return this.walletCore.handleUriOperation(uri);
   }
 
   /**
@@ -81,8 +61,13 @@ class WalletProtocolService {
    * Called from PresentationConfirmScreen after user presses "Share".
    */
   async submitPresentation(presentationId: string): Promise<ProtocolResult> {
-    const ctx = await this._buildCtx();
-    return oid4vpHandler.submitPresentation(presentationId, ctx);
+    return this.walletCore.submitPresentation(presentationId);
+  }
+
+  async submitPresentationOperation(
+    presentationId: string
+  ): Promise<WalletOperation> {
+    return this.walletCore.submitPresentationOperation(presentationId);
   }
 }
 

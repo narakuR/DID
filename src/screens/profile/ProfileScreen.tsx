@@ -24,7 +24,7 @@ import {
 } from 'lucide-react-native';
 
 import { useAuthStore } from '@/store/authStore';
-import { useWalletStore } from '@/store/walletStore';
+import { useWalletWriteStore } from '@/store/walletWriteStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { biometricService } from '@/services/biometricService';
 import { useTheme } from '@/hooks/useTheme';
@@ -49,7 +49,7 @@ export default function ProfileScreen() {
   const { colors } = useTheme();
   const { user, updateUser, logout, updateCloudSync, cloudSync } = useAuthStore();
   const devicePushToken = useNotificationStore((s) => s.devicePushToken);
-  const { clearWallet } = useWalletStore();
+  const { clearWallet } = useWalletWriteStore();
   const { theme, toggleTheme, language, setLanguage } = useSettingsStore();
   const [didMetadata, setDidMetadata] = useState<DIDMetadata | null>(null);
 

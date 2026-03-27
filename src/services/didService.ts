@@ -1,10 +1,10 @@
 /**
  * didService — compatibility wrapper around DidKeyProvider.
  *
- * All crypto logic has moved to src/plugins/did/DidKeyProvider.ts.
+ * All crypto logic has moved to src/wallet-core/did/DidKeyProvider.ts.
  * This file keeps the existing public API intact so callers don't need changes.
  */
-import { didKeyProvider } from '@/plugins/did/DidKeyProvider';
+import { didKeyProvider } from '@/wallet-core/did/DidKeyProvider';
 import type { DIDDocument, DIDMetadata } from '@/types';
 
 class DIDService {

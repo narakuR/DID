@@ -1,5 +1,5 @@
 import type { NavigatorScreenParams } from '@react-navigation/native';
-import type { PendingPresentationRequest } from '@/plugins/types';
+import type { PresentationSession } from '@/wallet-core/facade';
 
 export type TabParamList = {
   Wallet: undefined;
@@ -18,5 +18,5 @@ export type RootStackParamList = {
   Renewal: { credentialId: string };
   Issuance: undefined;
   Notifications: undefined;
-  PresentationConfirm: { request: PendingPresentationRequest };
+  PresentationConfirm: { session: PresentationSession };
 };

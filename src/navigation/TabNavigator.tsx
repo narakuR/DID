@@ -41,17 +41,14 @@ export default function TabNavigator() {
   // Dispatch deep-link protocol results that arrived while outside the navigator
   useEffect(() => {
     if (!pending) return;
-    if (pending.type === 'presentation_request') {
+    if (pending.kind === 'presentation_requested') {
       clear();
-      navigation.navigate('PresentationConfirm', { request: pending.request });
-    } else if (pending.type === 'credential_received') {
+      navigation.navigate('PresentationConfirm', { session: pending.session });
+    } else if (pending.kind === 'issuance_completed') {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       clear();
-      // Already persisted by walletProtocolService; stay on Main (wallet tab)
-    } else if (pending.type === 'error') {
+    } else if (pending.kind === 'failure') {
       clear();
-      // Errors from background deep links are silently dropped here.
-      // ScanScreen handles errors from user-initiated scans with Alert.
     } else {
       clear();
     }

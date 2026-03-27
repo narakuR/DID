@@ -7,50 +7,31 @@ import 'react-native-reanimated';
 
 import { useAuthStore } from '@/store/authStore';
 import { useNotificationStore } from '@/store/notificationStore';
-import { useWalletStore } from '@/store/walletStore';
+import { useWalletWriteStore } from '@/store/walletWriteStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useInactivityTimer } from '@/hooks/useInactivityTimer';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useTheme } from '@/hooks/useTheme';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import RootNavigator from '@/navigation/RootNavigator';
-import { registry } from '@/plugins/registry';
-import { didKeyProvider } from '@/plugins/did/DidKeyProvider';
-import { didJwkProvider } from '@/plugins/did/DidJwkProvider';
-import { didWebProvider } from '@/plugins/did/DidWebProvider';
 import { credentialRepository } from '@/services/credentialRepository';
 import { useDeepLinkStore } from '@/store/deepLinkStore';
-import { ExpoStorageBackend } from '@/plugins/storage/ExpoStorageBackend';
-import { W3cJwtVcFormat } from '@/plugins/formats/W3cJwtVcFormat';
-import { SdJwtVcFormat } from '@/plugins/formats/SdJwtVcFormat';
-import { MdocFormat } from '@/plugins/formats/MdocFormat';
-import { oid4vciHandler } from '@/plugins/protocols/Oid4vciHandler';
-import { oid4vpHandler } from '@/plugins/protocols/Oid4vpHandler';
 import { walletProtocolService } from '@/services/walletProtocolService';
 import { INTEGRATION_CONFIG } from '@/config/integration';
+import { walletRegistry } from '@/wallet-core/registry/walletRegistry';
+import { registerWalletBuiltins } from '@/wallet-core/bootstrap/registerBuiltins';
 
-// ── Plugin registry initialization ───────────────────────────────────────────
-// Register built-in plugins once at module load time (synchronous, cheap).
-registry.setStorageBackend(new ExpoStorageBackend());
-registry.registerDIDProvider(didKeyProvider);
-registry.registerDIDProvider(didJwkProvider);
-registry.registerDIDProvider(didWebProvider);
-registry.registerCredentialFormat(new W3cJwtVcFormat());
-registry.registerCredentialFormat(new SdJwtVcFormat());
-registry.registerCredentialFormat(new MdocFormat());
-registry.registerProtocolHandler(oid4vciHandler);
-registry.registerProtocolHandler(oid4vpHandler);
-if (__DEV__) registry.logRegistered();
+registerWalletBuiltins();
 
 export default function RootLayout() {
   const hydrateAuth = useAuthStore((s) => s.hydrate);
   const hydrateNotifications = useNotificationStore((s) => s.hydrate);
-  const hydrateWallet = useWalletStore((s) => s.hydrate);
+  const hydrateWallet = useWalletWriteStore((s) => s.hydrate);
   const hydrateSettings = useSettingsStore((s) => s.hydrate);
 
   const authHydrated = useAuthStore((s) => s.isHydrated);
   const notificationHydrated = useNotificationStore((s) => s.isHydrated);
-  const walletHydrated = useWalletStore((s) => s.isHydrated);
+  const walletHydrated = useWalletWriteStore((s) => s.isHydrated);
   const settingsHydrated = useSettingsStore((s) => s.isHydrated);
   const isOnboarded = useAuthStore((s) => s.isOnboarded);
 
@@ -79,8 +60,8 @@ export default function RootLayout() {
         return;
       }
 
-      if (registry.routeProtocol(url)) {
-        walletProtocolService.handleUri(url).then((result) => {
+      if (walletRegistry.routeProtocol(url)) {
+        walletProtocolService.handleUriOperation(url).then((result) => {
           setPendingDeepLink(result);
         });
       }
@@ -89,8 +70,8 @@ export default function RootLayout() {
     const subscription = Linking.addEventListener('url', handleUrl);
     // Also check if the app was cold-started with a URL
     void Linking.getInitialURL().then((url) => {
-      if (url && !isHandledByAuthSession(url) && registry.routeProtocol(url)) {
-        walletProtocolService.handleUri(url).then((result) => {
+      if (url && !isHandledByAuthSession(url) && walletRegistry.routeProtocol(url)) {
+        walletProtocolService.handleUriOperation(url).then((result) => {
           setPendingDeepLink(result);
         });
       }
