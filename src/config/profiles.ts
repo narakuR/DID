@@ -1,21 +1,32 @@
 import { APP_CONFIG } from './app';
 
-const issuerBaseUrl =
+const issuerTransportBaseUrl =
   process.env.EXPO_PUBLIC_ISSUER_BASE_URL ||
   `http://${APP_CONFIG.localHostAlias}/pid-issuer`;
+const issuerPublicBaseUrl =
+  process.env.EXPO_PUBLIC_ISSUER_PUBLIC_BASE_URL ||
+  'https://localhost:8444/pid-issuer';
+const issuerAuthorizationServerTransportBaseUrl =
+  process.env.EXPO_PUBLIC_ISSUER_AUTHORIZATION_SERVER_BASE_URL ||
+  `http://${APP_CONFIG.localHostAlias}/idp`;
+const issuerAuthorizationServerPublicBaseUrl =
+  process.env.EXPO_PUBLIC_ISSUER_AUTHORIZATION_SERVER_PUBLIC_BASE_URL ||
+  'https://localhost:8444/idp';
 const verifierBaseUrl =
   process.env.EXPO_PUBLIC_VERIFIER_BASE_URL ||
   `http://${APP_CONFIG.localHostAlias}:8080`;
 
 export const PROFILES_CONFIG = {
   issuer: {
-    baseUrl: issuerBaseUrl,
+    baseUrl: issuerTransportBaseUrl,
+    publicBaseUrl: issuerPublicBaseUrl,
     offerCreateUrl:
       process.env.EXPO_PUBLIC_ISSUER_OFFER_CREATE_URL ||
-      `${issuerBaseUrl}/issuer/credentialsOffer/create`,
+      `${issuerTransportBaseUrl}/issuer/credentialsOffer/create`,
     authorizationServerBaseUrl:
-      process.env.EXPO_PUBLIC_ISSUER_AUTHORIZATION_SERVER_BASE_URL ||
-      `http://${APP_CONFIG.localHostAlias}/idp`,
+      issuerAuthorizationServerTransportBaseUrl,
+    authorizationServerPublicBaseUrl:
+      issuerAuthorizationServerPublicBaseUrl,
     clientId: process.env.EXPO_PUBLIC_ISSUER_CLIENT_ID || 'wallet-dev',
     entryMode: process.env.EXPO_PUBLIC_ISSUER_ENTRY_MODE || 'test-issuer',
     authMode: process.env.EXPO_PUBLIC_ISSUER_AUTH_MODE || 'authorization_code',

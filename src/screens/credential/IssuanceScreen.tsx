@@ -21,6 +21,7 @@ import {
   ShieldCheck,
   ChevronRight,
   BadgeCheck,
+  IdCard,
 } from 'lucide-react-native';
 
 import type { RootStackParamList } from '@/navigation/types';
@@ -28,9 +29,14 @@ import { useTheme } from '@/hooks/useTheme';
 import { COLORS } from '@/constants/colors';
 import { INTEGRATION_CONFIG } from '@/config/integration';
 import { protocolFlowService } from '@/services/protocolFlowService';
+import { oid4vciClient } from '@/wallet-core/protocol/oid4vci/client';
+import { listAvailableIssuerCredentialConfigurations } from '@/wallet-core/protocol/oid4vci/offerResolver';
+import type { ResolvedCredentialConfiguration } from '@/wallet-core/protocol/oid4vci/types';
+import { fetchJson } from '@/wallet-core/transport/httpClient';
+import { normalizeIssuerContextUrl } from '@/wallet-core/transport/urlResolver';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
-type BusyAction = 'ehic' | 'clipboard' | 'verifier' | null;
+type BusyAction = 'issuer' | 'clipboard' | 'verifier' | `issue:${string}` | null;
 
 type VerifierInitResponse = {
   client_id?: string;
@@ -38,16 +44,70 @@ type VerifierInitResponse = {
   request_uri_method?: string;
 };
 
-async function createTestIssuerOffer(): Promise<string> {
+function deriveJwtVcIssuerMetadataUrl(issuerBaseUrl: string): string {
+  const parsed = new URL(issuerBaseUrl);
+  return `${parsed.origin}/.well-known/jwt-vc-issuer${parsed.pathname}`;
+}
+
+function summarizeMetadata(label: string, value: unknown): string {
+  if (!value || typeof value !== 'object') {
+    return `${label}: <empty>`;
+  }
+
+  const objectValue = value as Record<string, unknown>;
+  const topLevelKeys = Object.keys(objectValue).sort();
+  const candidate =
+    objectValue.credential_configurations_supported ??
+    objectValue.credentialConfigurationsSupported ??
+    objectValue.credentials_supported ??
+    objectValue.credentialsSupported ??
+    objectValue.knownCredentialConfigurations ??
+    objectValue.known_credential_configurations ??
+    (objectValue.signedCredentials as Record<string, unknown> | undefined)
+      ?.credential_configurations_supported ??
+    (objectValue.signedCredentials as Record<string, unknown> | undefined)
+      ?.credentialConfigurationsSupported ??
+    (objectValue.signedCredentials as Record<string, unknown> | undefined)
+      ?.credentials_supported ??
+    (objectValue.signedCredentials as Record<string, unknown> | undefined)
+      ?.credentialsSupported ??
+    (objectValue.signedCredentials as Record<string, unknown> | undefined)
+      ?.knownCredentialConfigurations ??
+    objectValue.type_metadata ??
+    objectValue.typeMetadata ??
+    objectValue.types_supported ??
+    objectValue.typesSupported ??
+    objectValue.vcts_supported ??
+    objectValue.vctsSupported;
+
+  let candidateSummary = 'none';
+  if (Array.isArray(candidate)) {
+    candidateSummary = `array(${candidate.length})`;
+  } else if (candidate && typeof candidate === 'object') {
+    candidateSummary = `object(${Object.keys(candidate as Record<string, unknown>).length})`;
+  } else if (typeof candidate === 'string') {
+    candidateSummary = candidate;
+  }
+
+  const preview = JSON.stringify(objectValue, null, 2)?.slice(0, 900) ?? '';
+
+  return [
+    `${label}:`,
+    `keys=${topLevelKeys.join(', ') || '<none>'}`,
+    `candidate=${candidateSummary}`,
+    preview,
+  ].join('\n');
+}
+
+async function createTestIssuerOffer(
+  credentialConfigurationId: string
+): Promise<string> {
   const credentialOffer = {
-    credential_issuer: 'https://localhost:8444/pid-issuer',
-    credential_configuration_ids: [
-      INTEGRATION_CONFIG.credentials.ehic.credentialConfigurationId,
-    ],
+    credential_issuer: INTEGRATION_CONFIG.issuer.publicBaseUrl,
+    credential_configuration_ids: [credentialConfigurationId],
     grants: {
       authorization_code: {
-        authorization_server:
-          'https://localhost:8444/idp/realms/pid-issuer-realm',
+        authorization_server: `${INTEGRATION_CONFIG.issuer.authorizationServerPublicBaseUrl}/realms/pid-issuer-realm`,
       },
     },
   };
@@ -111,13 +171,22 @@ export default function IssuanceScreen() {
   const navigation = useNavigation<Nav>();
   const { colors } = useTheme();
   const [busyAction, setBusyAction] = useState<BusyAction>(null);
+  const [issuerCredentialOptions, setIssuerCredentialOptions] = useState<
+    ResolvedCredentialConfiguration[]
+  >([]);
+  const [issuerOptionsLoaded, setIssuerOptionsLoaded] = useState(false);
+  const [issuerDebugSummary, setIssuerDebugSummary] = useState<string | null>(null);
 
   const environmentRows = useMemo(
     () => [
       { label: 'Issuer', value: INTEGRATION_CONFIG.issuer.baseUrl },
+      { label: 'Canonical Issuer', value: INTEGRATION_CONFIG.issuer.publicBaseUrl },
       { label: 'Verifier', value: INTEGRATION_CONFIG.verifier.baseUrl },
       { label: '回调', value: INTEGRATION_CONFIG.app.issuanceRedirectUri },
-      { label: '首张证', value: INTEGRATION_CONFIG.credentials.ehic.label },
+      {
+        label: '默认测试证',
+        value: INTEGRATION_CONFIG.credentials.defaultTestCredential,
+      },
     ],
     []
   );
@@ -126,17 +195,61 @@ export default function IssuanceScreen() {
     await protocolFlowService.handleUri(uri, navigation);
   }
 
-  async function handleIssueEhic() {
-    setBusyAction('ehic');
+  async function handleIssueCredential(credentialConfigurationId: string) {
+    setBusyAction(`issue:${credentialConfigurationId}`);
     try {
-      const offerUri = await createTestIssuerOffer();
+      const offerUri = await createTestIssuerOffer(credentialConfigurationId);
       await startIssuanceFromUri(offerUri);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       Alert.alert(
         '测试签发方不可用',
-        `无法生成 EHIC 凭证 offer。\n${message}`
+        `无法生成 credential offer。\n${message}`
       );
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleLoadIssuerCredentials() {
+    setBusyAction('issuer');
+    try {
+      const issuerMetadata = await oid4vciClient.resolveIssuerMetadata(
+        INTEGRATION_CONFIG.issuer.publicBaseUrl
+      );
+      const options =
+        await listAvailableIssuerCredentialConfigurations(
+          INTEGRATION_CONFIG.issuer.publicBaseUrl,
+          issuerMetadata
+        );
+      setIssuerCredentialOptions(options);
+      setIssuerOptionsLoaded(true);
+
+      if (options.length === 0) {
+        let jwtVcIssuerMetadata: unknown = null;
+        try {
+          jwtVcIssuerMetadata = await fetchJson(
+            deriveJwtVcIssuerMetadataUrl(INTEGRATION_CONFIG.issuer.publicBaseUrl),
+            { rewriteUrl: normalizeIssuerContextUrl }
+          );
+        } catch (error) {
+          jwtVcIssuerMetadata = {
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+
+        setIssuerDebugSummary(
+          [
+            summarizeMetadata('openid-credential-issuer', issuerMetadata),
+            summarizeMetadata('jwt-vc-issuer', jwtVcIssuerMetadata),
+          ].join('\n\n')
+        );
+      } else {
+        setIssuerDebugSummary(null);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      Alert.alert('读取 issuer metadata 失败', message);
     } finally {
       setBusyAction(null);
     }
@@ -220,38 +333,117 @@ export default function IssuanceScreen() {
                 Test Issuer
               </Text>
               <Text style={[styles.heroTitle, { color: colors.text }]}>
-                领取 EHIC SD-JWT VC
+                领取 pid-issuer 支持的签证
               </Text>
             </View>
           </View>
 
           <Text style={[styles.heroDesc, { color: colors.textSecondary }]}>
-            通过当前集成环境生成真实 credential offer，拉起浏览器授权，并把签发结果回写到钱包。
+            先读取 issuer metadata，再按 `credential_configuration_id` 动态生成领取入口。
           </Text>
 
           <TouchableOpacity
             style={[styles.primaryButton, { opacity: busyAction ? 0.7 : 1 }]}
             onPress={() => {
-              void handleIssueEhic();
+              void handleLoadIssuerCredentials();
             }}
             disabled={busyAction !== null}
           >
-            {busyAction === 'ehic' ? (
+            {busyAction === 'issuer' ? (
               <ActivityIndicator color="#FFFFFF" size="small" />
             ) : (
               <>
                 <ExternalLink color="#FFFFFF" size={18} />
-                <Text style={styles.primaryButtonText}>从测试签发方领取 EHIC</Text>
+                <Text style={styles.primaryButtonText}>读取签发方支持的签证类型</Text>
               </>
             )}
           </TouchableOpacity>
 
-          <View style={styles.noteRow}>
-            <ShieldCheck color={COLORS.status.active} size={16} />
-            <Text style={[styles.noteText, { color: colors.textSecondary }]}>
-              PID 下一阶段再接入，这一版先把 EHIC 闭环跑通。
-            </Text>
-          </View>
+          {issuerOptionsLoaded ? (
+            <View style={styles.issuerList}>
+              {issuerCredentialOptions.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <View style={styles.noteRow}>
+                    <ShieldCheck color={COLORS.status.warning} size={16} />
+                    <Text style={[styles.noteText, { color: colors.textSecondary }]}>
+                      issuer metadata 中没有发现可领取的 credential configuration。
+                    </Text>
+                  </View>
+                  {issuerDebugSummary ? (
+                    <View
+                      style={[
+                        styles.debugCard,
+                        { backgroundColor: colors.background, borderColor: colors.border },
+                      ]}
+                    >
+                      <Text style={[styles.debugTitle, { color: colors.text }]}>
+                        Metadata 调试摘要
+                      </Text>
+                      <Text style={[styles.debugText, { color: colors.textSecondary }]}>
+                        {issuerDebugSummary}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+              ) : (
+                issuerCredentialOptions.map((option) => {
+                  const loading = busyAction === `issue:${option.id}`;
+                  return (
+                    <TouchableOpacity
+                      key={option.id}
+                      style={[
+                        styles.issuerOptionCard,
+                        { backgroundColor: colors.surface, borderColor: colors.border },
+                      ]}
+                      onPress={() => {
+                        void handleIssueCredential(option.id);
+                      }}
+                      disabled={busyAction !== null}
+                    >
+                      <View style={styles.issuerOptionContent}>
+                        <View style={styles.issuerOptionIcon}>
+                          <IdCard color={COLORS.euBlue} size={18} />
+                        </View>
+                        <View style={styles.issuerOptionInfo}>
+                          <Text style={[styles.issuerOptionTitle, { color: colors.text }]}>
+                            {option.displayName}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.issuerOptionMeta,
+                              { color: colors.textSecondary },
+                            ]}
+                          >
+                            {option.id}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.issuerOptionMeta,
+                              { color: colors.textSecondary },
+                            ]}
+                          >
+                            format: {option.rawFormat ?? option.format}
+                          </Text>
+                        </View>
+                        {loading ? (
+                          <ActivityIndicator color={COLORS.euBlue} size="small" />
+                        ) : (
+                          <ChevronRight color={colors.textSecondary} size={18} />
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </View>
+          ) : (
+            <View style={styles.noteRow}>
+              <ShieldCheck color={COLORS.status.active} size={16} />
+              <Text style={[styles.noteText, { color: colors.textSecondary }]}>
+                支持 `https://localhost/pid-issuer` 暴露的全部 credential configuration。
+              </Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.section}>
@@ -444,6 +636,57 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     lineHeight: 18,
+  },
+  issuerList: {
+    gap: 12,
+  },
+  emptyState: {
+    gap: 12,
+  },
+  issuerOptionCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 14,
+  },
+  issuerOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  issuerOptionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E8F0FF',
+  },
+  issuerOptionInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  issuerOptionTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  issuerOptionMeta: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  debugCard: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    gap: 8,
+  },
+  debugTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  debugText: {
+    fontSize: 11,
+    lineHeight: 16,
+    fontFamily: 'Courier',
   },
   section: {
     gap: 12,

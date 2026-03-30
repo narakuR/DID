@@ -5,30 +5,26 @@ jest.mock('@noble/hashes/sha2.js', () => ({
   sha256: jest.fn(() => new Uint8Array([9, 8, 7, 6])),
 }));
 
-jest.mock('@/wallet-core/did/DidJwkProvider', () => ({
-  didJwkProvider: {
-    getStoredMetadata: jest.fn(),
-    sign: jest.fn(),
+jest.mock('@/wallet-core/did/KeyManager', () => ({
+  keyManager: {
+    getSdJwtKeyBindingKey: jest.fn(),
   },
 }));
 
-jest.mock('@/wallet-core/did/DidKeyProvider', () => ({
-  didKeyProvider: {
-    getStoredMetadata: jest.fn(),
-    sign: jest.fn(),
+jest.mock('@/wallet-core/did/SignerFactory', () => ({
+  signerFactory: {
+    createRawSigner: jest.fn(),
   },
 }));
 
-const { didJwkProvider } = jest.requireMock('@/wallet-core/did/DidJwkProvider') as {
-  didJwkProvider: {
-    getStoredMetadata: jest.Mock;
-    sign: jest.Mock;
+const { keyManager } = jest.requireMock('@/wallet-core/did/KeyManager') as {
+  keyManager: {
+    getSdJwtKeyBindingKey: jest.Mock;
   };
 };
-const { didKeyProvider } = jest.requireMock('@/wallet-core/did/DidKeyProvider') as {
-  didKeyProvider: {
-    getStoredMetadata: jest.Mock;
-    sign: jest.Mock;
+const { signerFactory } = jest.requireMock('@/wallet-core/did/SignerFactory') as {
+  signerFactory: {
+    createRawSigner: jest.Mock;
   };
 };
 
@@ -58,10 +54,15 @@ describe('keyBindingBuilder', () => {
   });
 
   it('对 P-256 cnf 使用 did:jwk / ES256 签名', async () => {
-    didJwkProvider.getStoredMetadata.mockResolvedValue({
+    keyManager.getSdJwtKeyBindingKey.mockResolvedValue({
+      did: 'did:jwk:test',
       keyId: 'did:jwk:test#0',
+      alg: 'ES256',
+      method: 'did:jwk',
     });
-    didJwkProvider.sign.mockResolvedValue(new Uint8Array([1, 2, 3]));
+    signerFactory.createRawSigner.mockReturnValue(
+      jest.fn().mockResolvedValue(new Uint8Array([1, 2, 3]))
+    );
 
     const kbJwt = await buildKeyBindingJwt(
       `${buildIssuerJwt({
@@ -91,10 +92,15 @@ describe('keyBindingBuilder', () => {
   });
 
   it('对非 P-256 默认使用 did:key / EdDSA 签名', async () => {
-    didKeyProvider.getStoredMetadata.mockResolvedValue({
+    keyManager.getSdJwtKeyBindingKey.mockResolvedValue({
+      did: 'did:key:test',
       keyId: 'did:key:test#z6',
+      alg: 'EdDSA',
+      method: 'did:key',
     });
-    didKeyProvider.sign.mockResolvedValue(new Uint8Array([4, 5, 6]));
+    signerFactory.createRawSigner.mockReturnValue(
+      jest.fn().mockResolvedValue(new Uint8Array([4, 5, 6]))
+    );
 
     const kbJwt = await buildKeyBindingJwt(
       buildIssuerJwt({
@@ -119,7 +125,9 @@ describe('keyBindingBuilder', () => {
   });
 
   it('在缺少 did:jwk 密钥时抛错', async () => {
-    didJwkProvider.getStoredMetadata.mockResolvedValue(null);
+    keyManager.getSdJwtKeyBindingKey.mockRejectedValue(
+      new Error('Missing DID:JWK key required for SD-JWT key binding')
+    );
 
     await expect(
       buildKeyBindingJwt(
@@ -140,7 +148,9 @@ describe('keyBindingBuilder', () => {
   });
 
   it('在缺少 did:key 密钥时抛错', async () => {
-    didKeyProvider.getStoredMetadata.mockResolvedValue(null);
+    keyManager.getSdJwtKeyBindingKey.mockRejectedValue(
+      new Error('Missing DID:key required for SD-JWT key binding')
+    );
 
     await expect(
       buildKeyBindingJwt(buildIssuerJwt({}), {

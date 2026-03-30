@@ -1,6 +1,6 @@
 import { sha256 } from '@noble/hashes/sha2.js';
-import { didJwkProvider } from '@/wallet-core/did/DidJwkProvider';
-import { didKeyProvider } from '@/wallet-core/did/DidKeyProvider';
+import { keyManager } from '@/wallet-core/did/KeyManager';
+import { signerFactory } from '@/wallet-core/did/SignerFactory';
 import {
   bytesToBase64Url,
   parseJwtUnsafe,
@@ -24,24 +24,9 @@ export async function buildKeyBindingJwt(
 
   const sdHash = bytesToBase64Url(sha256(new TextEncoder().encode(presentedSdJwt)));
   const now = Math.floor(Date.now() / 1000);
-
-  let alg: 'ES256' | 'EdDSA' = 'EdDSA';
-  let sign: (input: Uint8Array) => Promise<Uint8Array>;
-
-  if (cnf?.jwk?.kty === 'EC' && cnf.jwk.crv === 'P-256') {
-    const meta = await didJwkProvider.getStoredMetadata();
-    if (!meta) {
-      throw new Error('Missing DID:JWK key required for SD-JWT key binding');
-    }
-    alg = 'ES256';
-    sign = (input: Uint8Array) => didJwkProvider.sign(input, meta.keyId);
-  } else {
-    const meta = await didKeyProvider.getStoredMetadata();
-    if (!meta) {
-      throw new Error('Missing DID:key required for SD-JWT key binding');
-    }
-    sign = (input: Uint8Array) => didKeyProvider.sign(input, meta.keyId);
-  }
+  const key = await keyManager.getSdJwtKeyBindingKey({ cnf });
+  const alg = key.alg;
+  const sign = signerFactory.createRawSigner(key);
 
   const header = {
     typ: 'kb+jwt',

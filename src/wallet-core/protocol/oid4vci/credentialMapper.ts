@@ -3,16 +3,27 @@ import type {
   ProtocolContext,
   ProtocolResult,
 } from '@/wallet-core/types/contracts';
-import { INTEGRATION_CONFIG } from '@/config/integration';
 import { normalizeIssuerContextUrl } from '@/wallet-core/transport/urlResolver';
 import { oid4vciCallbacks } from './client';
 import type { IssuerCredentialResponse } from './types';
+import { resolveCredentialConfiguration } from './offerResolver';
 
 function toFormatName(format: string | undefined): CredentialFormatName {
   if (!format) return 'jwt_vc_json';
   if (format === 'vc+sd-jwt' || format === 'dc+sd-jwt') return 'sd-jwt-vc';
   if (format === 'jwt_vc_json' || format === 'jwt_vc') return 'jwt_vc_json';
+  if (format === 'mso_mdoc') return 'mso_mdoc';
   return format as CredentialFormatName;
+}
+
+function inferFormatFromRawCredential(rawCredential: string): CredentialFormatName {
+  if (rawCredential.includes('~')) {
+    return 'sd-jwt-vc';
+  }
+  if (rawCredential.split('.').length === 3) {
+    return 'jwt_vc_json';
+  }
+  return 'mso_mdoc';
 }
 
 export async function requestCredentialWithIssuerCompat(options: {
@@ -87,16 +98,18 @@ export function extractRawCredential(credentialResponse: IssuerCredentialRespons
 export async function toCredentialReceivedResult(
   ctx: ProtocolContext,
   credentialConfigurationId: string,
+  issuerMetadata: unknown,
   credentialResponse: IssuerCredentialResponse
 ): Promise<ProtocolResult> {
   const rawCredential = extractRawCredential(credentialResponse);
-  const configuredFormat =
-    credentialConfigurationId ===
-    INTEGRATION_CONFIG.credentials.ehic.credentialConfigurationId
-      ? 'dc+sd-jwt'
-      : undefined;
-
-  const formatName = toFormatName(configuredFormat);
+  const resolvedConfiguration = resolveCredentialConfiguration(
+    credentialConfigurationId,
+    issuerMetadata
+  );
+  const formatName =
+    resolvedConfiguration.rawFormat
+      ? toFormatName(resolvedConfiguration.rawFormat)
+      : inferFormatFromRawCredential(rawCredential);
   const handler = ctx.registry.getCredentialFormat(formatName);
   const parsedCredential = await handler.parse(rawCredential);
   const displayModel = handler.toDisplayModel(parsedCredential);

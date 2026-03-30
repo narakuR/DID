@@ -119,6 +119,13 @@ describe('credentialMapper', () => {
       const result = await toCredentialReceivedResult(
         ctx,
         'urn:eudi:ehic:1:dc+sd-jwt-compact',
+        {
+          credential_configurations_supported: {
+            'urn:eudi:ehic:1:dc+sd-jwt-compact': {
+              format: 'dc+sd-jwt',
+            },
+          },
+        },
         { credential: 'raw-cred' }
       );
 
@@ -140,11 +147,32 @@ describe('credentialMapper', () => {
     it('对非 EHIC 配置默认选择 jwt_vc_json handler', async () => {
       const { ctx } = createContext();
 
-      await toCredentialReceivedResult(ctx, 'some-other-config', {
-        credential: 'raw-cred',
+      await toCredentialReceivedResult(ctx, 'some-other-config', undefined, {
+        credential: 'aaa.bbb.ccc',
       });
 
       expect(ctx.registry.getCredentialFormat).toHaveBeenCalledWith('jwt_vc_json');
+    });
+
+    it('根据 issuer metadata 的 format 选择 mso_mdoc handler', async () => {
+      const { ctx } = createContext();
+
+      await toCredentialReceivedResult(
+        ctx,
+        'org.iso.18013.5.1.mDL',
+        {
+          credential_configurations_supported: {
+            'org.iso.18013.5.1.mDL': {
+              format: 'mso_mdoc',
+            },
+          },
+        },
+        {
+          credential: 'encoded-mdoc',
+        }
+      );
+
+      expect(ctx.registry.getCredentialFormat).toHaveBeenCalledWith('mso_mdoc');
     });
   });
 });

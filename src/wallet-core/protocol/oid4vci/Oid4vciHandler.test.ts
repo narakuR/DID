@@ -12,6 +12,7 @@ jest.mock('./client', () => ({
 jest.mock('./offerResolver', () => ({
   resolveCredentialOffer: jest.fn(),
   resolveCredentialConfigId: jest.fn(),
+  resolveCredentialConfiguration: jest.fn(),
   isOid4vciCallback: jest.fn(),
 }));
 
@@ -39,6 +40,7 @@ const { oid4vciClient } = jest.requireMock('./client') as {
 const offerResolver = jest.requireMock('./offerResolver') as {
   resolveCredentialOffer: jest.Mock;
   resolveCredentialConfigId: jest.Mock;
+  resolveCredentialConfiguration: jest.Mock;
   isOid4vciCallback: jest.Mock;
 };
 const authFlow = jest.requireMock('./authFlow') as {
@@ -127,6 +129,15 @@ describe('Oid4vciHandler', () => {
       accessTokenResponse: { access_token: 'access-token' },
     });
     offerResolver.resolveCredentialConfigId.mockReturnValue('ehic-config');
+    offerResolver.resolveCredentialConfiguration.mockReturnValue({
+      id: 'ehic-config',
+      format: 'sd-jwt-vc',
+      rawFormat: 'dc+sd-jwt',
+      scope: 'scope-1',
+      displayName: 'EHIC',
+      bindingMethodsSupported: ['did:jwk'],
+      proofSigningAlgValuesSupported: ['ES256'],
+    });
     oid4vciClient.requestNonce.mockResolvedValue({ c_nonce: 'nonce-1' });
     proofBuilder.buildCredentialRequestProof.mockResolvedValue({ jwt: 'proof.jwt' });
     mapper.requestCredentialWithIssuerCompat.mockResolvedValue({ credential: 'raw-credential' });
@@ -141,7 +152,10 @@ describe('Oid4vciHandler', () => {
     expect(proofBuilder.buildCredentialRequestProof).toHaveBeenCalledWith({
       issuerMetadata: { issuer: 'meta' },
       credentialConfigurationId: 'ehic-config',
+      credentialFormat: 'sd-jwt-vc',
       nonce: 'nonce-1',
+      bindingMethodsSupported: ['did:jwk'],
+      proofSigningAlgValuesSupported: ['ES256'],
     });
     expect(mapper.requestCredentialWithIssuerCompat).toHaveBeenCalledWith({
       accessToken: 'access-token',
@@ -153,6 +167,12 @@ describe('Oid4vciHandler', () => {
       type: 'credential_received',
       credentials: [{ id: 'cred-1' }],
     });
+    expect(mapper.toCredentialReceivedResult).toHaveBeenCalledWith(
+      ctx,
+      'ehic-config',
+      { issuer: 'meta' },
+      { credential: 'raw-credential' }
+    );
   });
 
   it('在 grant 不支持时返回错误', async () => {

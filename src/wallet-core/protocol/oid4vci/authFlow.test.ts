@@ -40,6 +40,7 @@ jest.mock('./credentialMapper', () => ({
 
 jest.mock('./offerResolver', () => ({
   resolveCredentialConfigId: jest.fn(),
+  resolveCredentialConfiguration: jest.fn(),
   resolveCredentialScope: jest.fn(),
 }));
 
@@ -67,6 +68,7 @@ const { requestCredentialWithIssuerCompat } = jest.requireMock('./credentialMapp
 };
 const offerResolver = jest.requireMock('./offerResolver') as {
   resolveCredentialConfigId: jest.Mock;
+  resolveCredentialConfiguration: jest.Mock;
   resolveCredentialScope: jest.Mock;
 };
 
@@ -80,6 +82,14 @@ describe('authFlow', () => {
       authorizationServers: [{ issuer: 'as-1' }],
     });
     offerResolver.resolveCredentialConfigId.mockReturnValue('config-1');
+    offerResolver.resolveCredentialConfiguration.mockReturnValue({
+      id: 'config-1',
+      format: 'sd-jwt-vc',
+      rawFormat: 'dc+sd-jwt',
+      displayName: 'Config 1',
+      bindingMethodsSupported: ['did:jwk'],
+      proofSigningAlgValuesSupported: ['ES256'],
+    });
     offerResolver.resolveCredentialScope.mockReturnValue('scope-1');
     oid4vciClient.initiateAuthorization.mockResolvedValue({
       authorizationFlow: 'Oauth2Redirect',
@@ -110,6 +120,14 @@ describe('authFlow', () => {
       authorizationServers: [{ issuer: 'as-1' }],
     });
     offerResolver.resolveCredentialConfigId.mockReturnValue('config-1');
+    offerResolver.resolveCredentialConfiguration.mockReturnValue({
+      id: 'config-1',
+      format: 'sd-jwt-vc',
+      rawFormat: 'dc+sd-jwt',
+      displayName: 'Config 1',
+      bindingMethodsSupported: ['did:jwk'],
+      proofSigningAlgValuesSupported: ['ES256'],
+    });
     offerResolver.resolveCredentialScope.mockReturnValue('scope-1');
     oid4vciClient.initiateAuthorization.mockResolvedValue({
       authorizationFlow: 'PresentationDuringIssuance',
@@ -184,7 +202,12 @@ describe('authFlow', () => {
     const toCredentialReceivedResult = jest
       .fn<
         Promise<ProtocolResult>,
-        [ProtocolContext, string, { credential?: unknown; credentials?: ({ credential?: unknown } | unknown)[] }]
+        [
+          ProtocolContext,
+          string,
+          unknown,
+          { credential?: unknown; credentials?: ({ credential?: unknown } | unknown)[] }
+        ]
       >()
       .mockResolvedValue({
         type: 'credential_received',
@@ -213,7 +236,10 @@ describe('authFlow', () => {
     expect(buildCredentialRequestProof).toHaveBeenCalledWith({
       issuerMetadata: { authorizationServers: [{ issuer: 'as-1' }] },
       credentialConfigurationId: 'config-1',
+      credentialFormat: 'sd-jwt-vc',
       nonce: 'nonce-1',
+      bindingMethodsSupported: ['did:jwk'],
+      proofSigningAlgValuesSupported: ['ES256'],
     });
     expect(requestCredentialWithIssuerCompat).toHaveBeenCalledWith({
       accessToken: 'access-token',
@@ -230,6 +256,12 @@ describe('authFlow', () => {
         }),
       ],
     });
+    expect(toCredentialReceivedResult).toHaveBeenCalledWith(
+      ctx,
+      'config-1',
+      { authorizationServers: [{ issuer: 'as-1' }] },
+      { credential: 'raw-cred' }
+    );
   });
 
   it('loadPendingAuthRequest / clearPendingAuthRequest 走 storageService', async () => {

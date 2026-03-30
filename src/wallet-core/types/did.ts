@@ -17,6 +17,13 @@ export interface JwsSigner {
   sign(input: Uint8Array): Promise<Uint8Array>;
 }
 
+export interface KeyReference {
+  did: string;
+  keyId: string;
+  alg: 'EdDSA' | 'ES256';
+  method: 'did:key' | 'did:jwk';
+}
+
 export interface IDIDProvider {
   readonly method: string;
   create(options?: DIDCreateOptions): Promise<DIDProviderResult>;

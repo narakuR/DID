@@ -8,6 +8,7 @@ import {
   resolveCredentialOffer,
   resolveCredentialConfigId,
   isOid4vciCallback,
+  resolveCredentialConfiguration,
 } from './offerResolver';
 import {
   finishAuthorizationCodeFlow,
@@ -66,12 +67,24 @@ export class Oid4vciHandler implements IProtocolHandler {
           issuerMetadata,
         });
 
-      const credentialConfigurationId = resolveCredentialConfigId(credentialOffer);
+      const credentialConfigurationId = resolveCredentialConfigId(
+        credentialOffer,
+        issuerMetadata
+      );
+      const resolvedCredentialConfiguration = resolveCredentialConfiguration(
+        credentialConfigurationId,
+        issuerMetadata
+      );
       const nonceResult = await oid4vciClient.requestNonce({ issuerMetadata });
       const proof = await buildCredentialRequestProof({
         issuerMetadata,
         credentialConfigurationId,
+        credentialFormat: resolvedCredentialConfiguration.format,
         nonce: nonceResult.c_nonce,
+        bindingMethodsSupported:
+          resolvedCredentialConfiguration.bindingMethodsSupported,
+        proofSigningAlgValuesSupported:
+          resolvedCredentialConfiguration.proofSigningAlgValuesSupported,
       });
 
       const credentialResponse = await requestCredentialWithIssuerCompat({
@@ -84,6 +97,7 @@ export class Oid4vciHandler implements IProtocolHandler {
       return toCredentialReceivedResult(
         ctx,
         credentialConfigurationId,
+        issuerMetadata,
         credentialResponse
       );
     } catch (err) {

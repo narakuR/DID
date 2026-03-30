@@ -11,6 +11,7 @@ import { buildCredentialRequestProof } from './proofBuilder';
 import { requestCredentialWithIssuerCompat } from './credentialMapper';
 import {
   resolveCredentialConfigId,
+  resolveCredentialConfiguration,
   resolveCredentialScope,
 } from './offerResolver';
 import type { PendingOid4vciAuth } from './types';
@@ -33,13 +34,16 @@ export async function startAuthorizationCodeFlow(
   const issuerMetadata = await oid4vciClient.resolveIssuerMetadata(
     credentialOffer.credential_issuer
   );
-  const credentialConfigurationId = resolveCredentialConfigId(credentialOffer);
+  const credentialConfigurationId = resolveCredentialConfigId(
+    credentialOffer,
+    issuerMetadata
+  );
   const authorization = await oid4vciClient.initiateAuthorization({
     credentialOffer,
     issuerMetadata,
     clientId: INTEGRATION_CONFIG.issuer.clientId,
     redirectUri: INTEGRATION_CONFIG.app.issuanceRedirectUri,
-    scope: resolveCredentialScope(credentialConfigurationId),
+    scope: resolveCredentialScope(credentialConfigurationId, issuerMetadata),
   });
 
   if (authorization.authorizationFlow !== AuthorizationFlow.Oauth2Redirect) {
@@ -70,6 +74,7 @@ export async function finishAuthorizationCodeFlow(
   toCredentialReceivedResult: (
     ctx: ProtocolContext,
     credentialConfigurationId: string,
+    issuerMetadata: unknown,
     credentialResponse: Awaited<ReturnType<typeof requestCredentialWithIssuerCompat>>
   ) => Promise<ProtocolResult>
 ): Promise<ProtocolResult> {
@@ -111,13 +116,22 @@ export async function finishAuthorizationCodeFlow(
       redirectUri: pending.redirectUri,
     });
 
+  const resolvedCredentialConfiguration = resolveCredentialConfiguration(
+    pending.credentialConfigurationId,
+    pending.issuerMetadata
+  );
   const nonceResult = await oid4vciClient.requestNonce({
     issuerMetadata: pending.issuerMetadata,
   });
   const proof = await buildCredentialRequestProof({
     issuerMetadata: pending.issuerMetadata,
     credentialConfigurationId: pending.credentialConfigurationId,
+    credentialFormat: resolvedCredentialConfiguration.format,
     nonce: nonceResult.c_nonce,
+    bindingMethodsSupported:
+      resolvedCredentialConfiguration.bindingMethodsSupported,
+    proofSigningAlgValuesSupported:
+      resolvedCredentialConfiguration.proofSigningAlgValuesSupported,
   });
 
   const credentialResponse = await requestCredentialWithIssuerCompat({
@@ -131,6 +145,7 @@ export async function finishAuthorizationCodeFlow(
   return toCredentialReceivedResult(
     ctx,
     pending.credentialConfigurationId,
+    pending.issuerMetadata,
     credentialResponse
   );
 }

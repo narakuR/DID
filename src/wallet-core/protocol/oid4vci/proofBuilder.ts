@@ -1,58 +1,45 @@
-import { didJwkProvider } from '@/wallet-core/did/DidJwkProvider';
-import { didKeyProvider } from '@/wallet-core/did/DidKeyProvider';
-import { INTEGRATION_CONFIG } from '@/config/integration';
+import { keyManager } from '@/wallet-core/did/KeyManager';
 import { oid4vciClient } from './client';
+import type { KeyReference } from '@/wallet-core/types/did';
 
-export async function resolveProofSigner(credentialConfigurationId: string): Promise<{
-  clientId: string;
-  didUrl: string;
-  alg: 'EdDSA' | 'ES256';
-}> {
-  const needsEs256 =
-    credentialConfigurationId ===
-    INTEGRATION_CONFIG.credentials.ehic.credentialConfigurationId;
-
-  if (needsEs256) {
-    let metadata = await didJwkProvider.getStoredMetadata();
-    if (!metadata) {
-      const created = await didJwkProvider.create();
-      metadata = created.metadata;
-    }
-
-    return {
-      clientId: metadata.did,
-      didUrl: metadata.keyId,
-      alg: 'ES256',
-    };
+export async function resolveProofSigner(
+  options: {
+    credentialConfigurationId: string;
+    credentialFormat?: 'sd-jwt-vc' | 'jwt_vc_json' | 'mso_mdoc';
+    bindingMethodsSupported?: string[];
+    proofSigningAlgValuesSupported?: string[];
   }
+): Promise<KeyReference> {
+  return keyManager.getCredentialProofKey(options);
+}
 
-  const metadata = await didKeyProvider.getStoredMetadata();
-  if (!metadata) {
-    throw new Error('No active DID found. Please finish wallet setup first.');
-  }
-
+function toDidSigner(proofSigner: KeyReference) {
   return {
-    clientId: metadata.did,
-    didUrl: metadata.keyId,
-    alg: 'EdDSA',
+    method: 'did' as const,
+    didUrl: proofSigner.keyId,
+    alg: proofSigner.alg,
   };
 }
 
 export async function buildCredentialRequestProof(options: {
   issuerMetadata: Parameters<typeof oid4vciClient.requestNonce>[0]['issuerMetadata'];
   credentialConfigurationId: string;
+  credentialFormat?: 'sd-jwt-vc' | 'jwt_vc_json' | 'mso_mdoc';
   nonce: string;
+  bindingMethodsSupported?: string[];
+  proofSigningAlgValuesSupported?: string[];
 }) {
-  const proofSigner = await resolveProofSigner(options.credentialConfigurationId);
+  const proofSigner = await resolveProofSigner({
+    credentialConfigurationId: options.credentialConfigurationId,
+    credentialFormat: options.credentialFormat,
+    bindingMethodsSupported: options.bindingMethodsSupported,
+    proofSigningAlgValuesSupported: options.proofSigningAlgValuesSupported,
+  });
   return oid4vciClient.createCredentialRequestJwtProof({
     issuerMetadata: options.issuerMetadata,
     credentialConfigurationId: options.credentialConfigurationId,
     nonce: options.nonce,
-    clientId: proofSigner.clientId,
-    signer: {
-      method: 'did',
-      didUrl: proofSigner.didUrl,
-      alg: proofSigner.alg,
-    },
+    clientId: proofSigner.did,
+    signer: toDidSigner(proofSigner),
   });
 }
