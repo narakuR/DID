@@ -11,11 +11,11 @@ import {
 import { BarChart } from 'react-native-gifted-charts';
 import { History } from 'lucide-react-native';
 
-import { MOCK_ACTIVITY_LOGS, MOCK_GRAPH_DATA } from '@/constants/mockData';
 import { ActivityLog } from '@/types';
 import { useTheme } from '@/hooks/useTheme';
 import { COLORS } from '@/constants/colors';
 import ActivityLogItem from '@/components/ActivityLogItem';
+import { useActivityLogStore } from '@/store/activityLogStore';
 
 type Filter = 'ALL' | 'PRESENTED' | 'RECEIVED' | 'REVOKED';
 
@@ -29,22 +29,53 @@ const FILTERS: { key: Filter; label: string; color: string }[] = [
 export default function ActivityScreen() {
   const { colors, isDark } = useTheme();
   const [activeFilter, setActiveFilter] = useState<Filter>('ALL');
+  const logs = useActivityLogStore((s) => s.logs);
 
-  const maxValue = Math.max(...MOCK_GRAPH_DATA.map((d) => d.value));
+  const chartData = useMemo(() => {
+    const formatter = new Intl.DateTimeFormat(undefined, { weekday: 'short' });
+    const today = new Date();
+    const days = Array.from({ length: 7 }, (_, offset) => {
+      const date = new Date(today);
+      date.setDate(today.getDate() - (6 - offset));
+      const count = logs.filter((log) => {
+        const logDate = new Date(log.timestamp);
+        return logDate.toDateString() === date.toDateString();
+      }).length;
 
-  const chartData = MOCK_GRAPH_DATA.map((d) => ({
-    value: d.value,
-    label: d.day,
-    frontColor: d.value === maxValue ? COLORS.euBlue : (isDark ? '#374151' : '#D1D5DB'),
-    topLabelComponent: d.value === maxValue
-      ? () => <Text style={{ color: COLORS.euBlue, fontSize: 10, fontWeight: '700' }}>{d.value}</Text>
-      : undefined,
-  }));
+      return {
+        value: count,
+        label: formatter.format(date),
+      };
+    });
+
+    const maxValue = Math.max(1, ...days.map((day) => day.value));
+
+    return days.map((day) => ({
+      value: day.value,
+      label: day.label,
+      frontColor:
+        day.value === maxValue && day.value > 0
+          ? COLORS.euBlue
+          : isDark
+            ? '#374151'
+            : '#D1D5DB',
+      topLabelComponent:
+        day.value === maxValue && day.value > 0
+          ? () => (
+              <Text style={{ color: COLORS.euBlue, fontSize: 10, fontWeight: '700' }}>
+                {day.value}
+              </Text>
+            )
+          : undefined,
+    }));
+  }, [isDark, logs]);
+
+  const maxValue = Math.max(1, ...chartData.map((d) => d.value));
 
   const filteredLogs = useMemo<ActivityLog[]>(() => {
-    if (activeFilter === 'ALL') return MOCK_ACTIVITY_LOGS;
-    return MOCK_ACTIVITY_LOGS.filter((l) => l.action === activeFilter);
-  }, [activeFilter]);
+    if (activeFilter === 'ALL') return logs;
+    return logs.filter((l) => l.action === activeFilter);
+  }, [activeFilter, logs]);
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -74,7 +105,7 @@ export default function ActivityScreen() {
             yAxisTextStyle={{ color: colors.textSecondary, fontSize: 10 }}
             xAxisLabelTextStyle={{ color: colors.textSecondary, fontSize: 10 }}
             noOfSections={4}
-            maxValue={Math.ceil(maxValue / 4) * 4}
+            maxValue={Math.max(4, Math.ceil(maxValue / 4) * 4)}
             height={120}
             width={300}
           />

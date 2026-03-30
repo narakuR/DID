@@ -12,7 +12,6 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
 import {
   ShieldCheck,
   Fingerprint,
@@ -28,9 +27,8 @@ import { biometricService } from '@/services/biometricService';
 import { useTheme } from '@/hooks/useTheme';
 import { COLORS } from '@/constants/colors';
 import { CONFIG } from '@/constants/config';
-import { MOCK_CREDENTIALS } from '@/constants/mockData';
 import { AuthMethod, UserProfile } from '@/types';
-import { didService } from '@/services/didService';
+import { walletIdentityService } from '@/services/walletIdentityService';
 import PinPad from '@/components/PinPad';
 import LoadingOverlay from '@/components/LoadingOverlay';
 
@@ -49,7 +47,7 @@ type PinSubStep = 'enter' | 'confirm';
 export default function OnboardingScreen() {
   const { colors } = useTheme();
   const { completeOnboarding, updateCloudSync } = useAuthStore();
-  const { restoreWallet, clearWallet } = useWalletWriteStore();
+  const { clearWallet } = useWalletWriteStore();
 
   const [step, setStep] = useState<Step>('WELCOME');
   const [selectedAuth, setSelectedAuth] = useState<AuthMethod>('BIO');
@@ -64,7 +62,6 @@ export default function OnboardingScreen() {
   const [restorePassword, setRestorePassword] = useState('');
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState('');
-  const [restored, setRestored] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
 
@@ -176,7 +173,7 @@ export default function OnboardingScreen() {
 
   async function handleOtpVerify() {
     if (otp !== CONFIG.OTP_DEMO_CODE) return;
-    setLoadingMessage('Checking for backup…');
+    setLoadingMessage('Preparing your wallet…');
     setLoading(true);
     await new Promise((r) => setTimeout(r, 1500));
     setLoading(false);
@@ -195,9 +192,8 @@ export default function OnboardingScreen() {
         setProgress(stage.from + increment * i);
       }
     }
-    await restoreWallet(MOCK_CREDENTIALS);
-    await updateCloudSync(true, new Date().toISOString());
-    setRestored(true);
+    await clearWallet();
+    await updateCloudSync(false, undefined);
     goTo('SUCCESS');
   }
 
@@ -208,11 +204,8 @@ export default function OnboardingScreen() {
 
   async function handleEnterWallet() {
     try {
-      setLoadingMessage('Generating DID key pair…');
+      setLoadingMessage('Initializing wallet identity…');
       setLoading(true);
-
-      const didResult = await didService.ensureDIDKeyPair();
-      await didService.exportDIDDocumentToDevice();
 
       const profile: UserProfile = {
         id: `user-${Date.now()}`,
@@ -222,49 +215,12 @@ export default function OnboardingScreen() {
         createdAt: new Date().toISOString(),
       };
       await completeOnboarding(profile);
-
-      const locationHint = didService.getPrivateKeyLocationHint(didResult.metadata.keyId);
-      Alert.alert(
-        'DID 密钥已生成',
-        [
-          `DID: ${didResult.did}`,
-          didResult.isNew ? '公钥 DID 文档已弹出系统分享窗口，可保存到手机“文件”或发送到其他应用。' : '已检测到现有 DID，已重新弹出公钥文档导出窗口。',
-          `私钥存储键名：${locationHint.storeKey}`,
-          '私钥不会出现在应用界面，也不会作为文件导出。',
-        ].join('\n\n'),
-        [
-          {
-            text: '复制私钥键名',
-            onPress: () => {
-              Clipboard.setStringAsync(locationHint.storeKey);
-            },
-          },
-          {
-            text: '输出到控制台',
-            onPress: () => {
-              void logDidPrivateKeyToConsole(didResult.metadata.keyId);
-            },
-          },
-          { text: '确定' },
-        ]
-      );
+      await walletIdentityService.ensureReady();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      Alert.alert('DID 生成失败', message);
+      Alert.alert('钱包初始化失败', message);
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function logDidPrivateKeyToConsole(keyId: string) {
-    try {
-      const locationHint = didService.getPrivateKeyLocationHint(keyId);
-      const value = await didService.getStoredPrivateKeyValue(keyId);
-      console.log('[DID Private Key]', { key: locationHint.storeKey, value });
-      Alert.alert('已输出到控制台', '私钥键值对已输出到控制台日志。');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      Alert.alert('读取私钥失败', message);
     }
   }
 
@@ -432,23 +388,23 @@ export default function OnboardingScreen() {
             <Animated.View style={{ transform: [{ translateY: cloudBounce }] }}>
               <Cloud color={COLORS.euBlue} size={64} />
             </Animated.View>
-            <Text style={[styles.title, { color: colors.text }]}>Cloud Backup Found</Text>
+            <Text style={[styles.title, { color: colors.text }]}>Start With An Empty Wallet</Text>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-              We found a backup from your previous wallet. Restore it now?
+              This build stores only real credentials issued to your wallet. No sample credentials will be imported.
             </Text>
             <TextInput
               style={[styles.textInput, { backgroundColor: colors.input, color: colors.text, borderColor: colors.border }]}
               value={restorePassword}
               onChangeText={setRestorePassword}
-              placeholder="Backup Password"
+              placeholder="Optional local backup password"
               placeholderTextColor={colors.placeholder}
               secureTextEntry
             />
             <TouchableOpacity style={styles.primaryButton} onPress={handleRestore}>
-              <Text style={styles.primaryButtonText}>Restore Backup</Text>
+              <Text style={styles.primaryButtonText}>Continue</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={handleSkipRestore}>
-              <Text style={[styles.linkText, { color: colors.textSecondary }]}>Skip restore</Text>
+              <Text style={[styles.linkText, { color: colors.textSecondary }]}>Skip</Text>
             </TouchableOpacity>
           </KeyboardAvoidingView>
         );
@@ -474,12 +430,10 @@ export default function OnboardingScreen() {
           <View style={styles.centered}>
             <CheckCircle color={COLORS.status.active} size={80} />
             <Text style={[styles.title, { color: colors.text }]}>
-              {restored ? 'Wallet Restored!' : 'Wallet Ready!'}
+              Wallet Ready!
             </Text>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-              {restored
-                ? 'Your credentials have been successfully restored.'
-                : 'Your digital wallet is set up and ready to use.'}
+              Your wallet is ready. Credentials will appear here after they are actually issued to you.
             </Text>
             <TouchableOpacity style={styles.primaryButton} onPress={handleEnterWallet}>
               <Text style={styles.primaryButtonText}>Enter Wallet</Text>

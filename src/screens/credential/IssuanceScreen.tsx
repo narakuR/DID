@@ -20,6 +20,8 @@ import {
   ExternalLink,
   ShieldCheck,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   BadgeCheck,
   IdCard,
 } from 'lucide-react-native';
@@ -29,6 +31,7 @@ import { useTheme } from '@/hooks/useTheme';
 import { COLORS } from '@/constants/colors';
 import { INTEGRATION_CONFIG } from '@/config/integration';
 import { protocolFlowService } from '@/services/protocolFlowService';
+import { useIdentityStore } from '@/store/identityStore';
 import { oid4vciClient } from '@/wallet-core/protocol/oid4vci/client';
 import { listAvailableIssuerCredentialConfigurations } from '@/wallet-core/protocol/oid4vci/offerResolver';
 import type { ResolvedCredentialConfiguration } from '@/wallet-core/protocol/oid4vci/types';
@@ -170,12 +173,15 @@ async function createTestVerifierRequest(): Promise<string> {
 export default function IssuanceScreen() {
   const navigation = useNavigation<Nav>();
   const { colors } = useTheme();
+  const identityStatus = useIdentityStore((s) => s.status);
+  const identityError = useIdentityStore((s) => s.errorMessage);
   const [busyAction, setBusyAction] = useState<BusyAction>(null);
   const [issuerCredentialOptions, setIssuerCredentialOptions] = useState<
     ResolvedCredentialConfiguration[]
   >([]);
   const [issuerOptionsLoaded, setIssuerOptionsLoaded] = useState(false);
   const [issuerDebugSummary, setIssuerDebugSummary] = useState<string | null>(null);
+  const [devToolsExpanded, setDevToolsExpanded] = useState(false);
 
   const environmentRows = useMemo(
     () => [
@@ -196,6 +202,16 @@ export default function IssuanceScreen() {
   }
 
   async function handleIssueCredential(credentialConfigurationId: string) {
+    if (identityStatus !== 'ready') {
+      Alert.alert(
+        '钱包身份尚未就绪',
+        identityStatus === 'error'
+          ? `钱包身份初始化失败：${identityError ?? 'Unknown error'}`
+          : '钱包正在初始化身份与密钥，请稍后再试。'
+      );
+      return;
+    }
+
     setBusyAction(`issue:${credentialConfigurationId}`);
     try {
       const offerUri = await createTestIssuerOffer(credentialConfigurationId);
@@ -324,13 +340,47 @@ export default function IssuanceScreen() {
             { backgroundColor: colors.card, borderColor: colors.border },
           ]}
         >
+          <View
+            style={[
+              styles.identityBanner,
+              {
+                backgroundColor:
+                  identityStatus === 'ready'
+                    ? '#E8F5E9'
+                    : identityStatus === 'error'
+                      ? '#FEE2E2'
+                      : '#EFF6FF',
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.identityBannerText,
+                {
+                  color:
+                    identityStatus === 'ready'
+                      ? '#166534'
+                      : identityStatus === 'error'
+                        ? '#991B1B'
+                        : '#1D4ED8',
+                },
+              ]}
+            >
+              {identityStatus === 'ready'
+                ? '钱包身份已就绪，可直接领取和出示证件'
+                : identityStatus === 'error'
+                  ? `钱包身份初始化失败：${identityError ?? 'Unknown error'}`
+                  : '正在初始化钱包身份与签名密钥…'}
+            </Text>
+          </View>
+
           <View style={styles.heroHeader}>
             <View style={styles.heroIcon}>
               <Hospital color="#FFFFFF" size={22} />
             </View>
             <View style={styles.heroInfo}>
               <Text style={[styles.heroEyebrow, { color: colors.textSecondary }]}>
-                Test Issuer
+                推荐入口
               </Text>
               <Text style={[styles.heroTitle, { color: colors.text }]}>
                 领取 pid-issuer 支持的签证
@@ -347,7 +397,7 @@ export default function IssuanceScreen() {
             onPress={() => {
               void handleLoadIssuerCredentials();
             }}
-            disabled={busyAction !== null}
+            disabled={busyAction !== null || identityStatus === 'initializing'}
           >
             {busyAction === 'issuer' ? (
               <ActivityIndicator color="#FFFFFF" size="small" />
@@ -446,88 +496,120 @@ export default function IssuanceScreen() {
           )}
         </View>
 
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>其他入口</Text>
-
+        <View
+          style={[
+            styles.environmentCard,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
           <TouchableOpacity
-            style={[
-              styles.actionCard,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
-            onPress={() => {
-              void handleTestVerifier();
-            }}
-            disabled={busyAction !== null}
+            style={styles.sectionToggle}
+            onPress={() => setDevToolsExpanded((prev) => !prev)}
+            activeOpacity={0.8}
           >
-            <View style={styles.actionLeft}>
-              <View style={[styles.actionIconWrap, { backgroundColor: '#7C3AED18' }]}>
-                <BadgeCheck color="#7C3AED" size={20} />
-              </View>
-              <View style={styles.actionTextWrap}>
-                <Text style={[styles.actionTitle, { color: colors.text }]}>打开测试验证方</Text>
-                <Text style={[styles.actionDesc, { color: colors.textSecondary }]}>
-                  直接创建一个 EHIC 的 OpenID4VP 请求，用于验证展示闭环。
-                </Text>
-              </View>
+            <View style={styles.sectionToggleTextWrap}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>开发调试</Text>
+              <Text style={[styles.sectionSubtitle, { color: colors.textSecondary }]}>
+                扫码、剪贴板导入和测试验证方入口
+              </Text>
             </View>
-            {busyAction === 'verifier' ? (
-              <ActivityIndicator color={colors.textSecondary} size="small" />
+            {devToolsExpanded ? (
+              <ChevronUp color={colors.textSecondary} size={18} />
             ) : (
-              <ChevronRight color={colors.textSecondary} size={18} />
+              <ChevronDown color={colors.textSecondary} size={18} />
             )}
           </TouchableOpacity>
 
-          {INTEGRATION_CONFIG.dev.enableScanOffer && (
-            <TouchableOpacity
-              style={[
-                styles.actionCard,
-                { backgroundColor: colors.card, borderColor: colors.border },
-              ]}
-              onPress={openScanner}
-            >
-              <View style={styles.actionLeft}>
-                <View style={[styles.actionIconWrap, { backgroundColor: `${COLORS.euBlue}18` }]}>
-                  <ScanLine color={COLORS.euBlue} size={20} />
+          {devToolsExpanded ? (
+            <View style={styles.section}>
+              <TouchableOpacity
+                style={[
+                  styles.actionCard,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                ]}
+                onPress={() => {
+                  void handleTestVerifier();
+                }}
+                disabled={busyAction !== null}
+              >
+                <View style={styles.actionLeft}>
+                  <View style={[styles.actionIconWrap, { backgroundColor: '#7C3AED18' }]}>
+                    <BadgeCheck color="#7C3AED" size={20} />
+                  </View>
+                  <View style={styles.actionTextWrap}>
+                    <Text style={[styles.actionTitle, { color: colors.text }]}>打开测试验证方</Text>
+                    <Text style={[styles.actionDesc, { color: colors.textSecondary }]}>
+                      直接创建一个 EHIC 的 OpenID4VP 请求，用于验证展示闭环。
+                    </Text>
+                  </View>
                 </View>
-                <View style={styles.actionTextWrap}>
-                  <Text style={[styles.actionTitle, { color: colors.text }]}>扫描 issuer 二维码</Text>
-                  <Text style={[styles.actionDesc, { color: colors.textSecondary }]}>
-                    支持 credentials offer 和 verifier request 两类二维码。
-                  </Text>
-                </View>
-              </View>
-              <ChevronRight color={colors.textSecondary} size={18} />
-            </TouchableOpacity>
-          )}
+                {busyAction === 'verifier' ? (
+                  <ActivityIndicator color={colors.textSecondary} size="small" />
+                ) : (
+                  <ChevronRight color={colors.textSecondary} size={18} />
+                )}
+              </TouchableOpacity>
 
-          {INTEGRATION_CONFIG.dev.enablePasteOffer && (
-            <TouchableOpacity
-              style={[
-                styles.actionCard,
-                { backgroundColor: colors.card, borderColor: colors.border },
-              ]}
-              onPress={() => {
-                void handlePasteOffer();
-              }}
-              disabled={busyAction !== null}
-            >
-              <View style={styles.actionLeft}>
-                <View style={[styles.actionIconWrap, { backgroundColor: '#0F766E18' }]}>
-                  <ClipboardPaste color="#0F766E" size={20} />
-                </View>
-                <View style={styles.actionTextWrap}>
-                  <Text style={[styles.actionTitle, { color: colors.text }]}>从剪贴板导入 offer</Text>
-                  <Text style={[styles.actionDesc, { color: colors.textSecondary }]}>
-                    适合调试时复制 `openid-credential-offer://...` 链接后直接领证。
-                  </Text>
-                </View>
-              </View>
-              {busyAction === 'clipboard' ? (
-                <ActivityIndicator color={colors.textSecondary} size="small" />
-              ) : (
-                <ChevronRight color={colors.textSecondary} size={18} />
+              {INTEGRATION_CONFIG.dev.enableScanOffer && (
+                <TouchableOpacity
+                  style={[
+                    styles.actionCard,
+                    { backgroundColor: colors.card, borderColor: colors.border },
+                  ]}
+                  onPress={openScanner}
+                >
+                  <View style={styles.actionLeft}>
+                    <View style={[styles.actionIconWrap, { backgroundColor: `${COLORS.euBlue}18` }]}>
+                      <ScanLine color={COLORS.euBlue} size={20} />
+                    </View>
+                    <View style={styles.actionTextWrap}>
+                      <Text style={[styles.actionTitle, { color: colors.text }]}>扫描 issuer 二维码</Text>
+                      <Text style={[styles.actionDesc, { color: colors.textSecondary }]}>
+                        支持 credentials offer 和 verifier request 两类二维码。
+                      </Text>
+                    </View>
+                  </View>
+                  <ChevronRight color={colors.textSecondary} size={18} />
+                </TouchableOpacity>
               )}
-            </TouchableOpacity>
+
+              {INTEGRATION_CONFIG.dev.enablePasteOffer && (
+                <TouchableOpacity
+                  style={[
+                    styles.actionCard,
+                    { backgroundColor: colors.card, borderColor: colors.border },
+                  ]}
+                  onPress={() => {
+                    void handlePasteOffer();
+                  }}
+                  disabled={busyAction !== null}
+                >
+                  <View style={styles.actionLeft}>
+                    <View style={[styles.actionIconWrap, { backgroundColor: '#0F766E18' }]}>
+                      <ClipboardPaste color="#0F766E" size={20} />
+                    </View>
+                    <View style={styles.actionTextWrap}>
+                      <Text style={[styles.actionTitle, { color: colors.text }]}>从剪贴板导入 offer</Text>
+                      <Text style={[styles.actionDesc, { color: colors.textSecondary }]}>
+                        适合调试时复制 `openid-credential-offer://...` 链接后直接领证。
+                      </Text>
+                    </View>
+                  </View>
+                  {busyAction === 'clipboard' ? (
+                    <ActivityIndicator color={colors.textSecondary} size="small" />
+                  ) : (
+                    <ChevronRight color={colors.textSecondary} size={18} />
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+          ) : (
+            <View style={styles.noteRow}>
+              <ShieldCheck color={COLORS.status.active} size={16} />
+              <Text style={[styles.noteText, { color: colors.textSecondary }]}>
+                默认已隐藏调试入口，展开后可使用扫描、导入和验证调试能力。
+              </Text>
+            </View>
           )}
         </View>
 
@@ -583,6 +665,16 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     padding: 20,
     gap: 16,
+  },
+  identityBanner: {
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  identityBannerText: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
   },
   heroHeader: {
     flexDirection: 'row',
@@ -691,9 +783,23 @@ const styles = StyleSheet.create({
   section: {
     gap: 12,
   },
+  sectionToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  sectionToggleTextWrap: {
+    flex: 1,
+    gap: 4,
+  },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
+  },
+  sectionSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
   },
   actionCard: {
     borderRadius: 18,

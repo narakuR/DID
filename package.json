@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
-    "@google/genai": "^1.46.0",
     "@noble/curves": "^2.0.1",
     "@noble/hashes": "^2.0.1",
     "@openid4vc/openid4vci": "^0.4.6",

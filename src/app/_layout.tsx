@@ -10,6 +10,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useNotificationStore } from '@/store/notificationStore';
 import { useWalletWriteStore } from '@/store/walletWriteStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useActivityLogStore } from '@/store/activityLogStore';
 import { useInactivityTimer } from '@/hooks/useInactivityTimer';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useTheme } from '@/hooks/useTheme';
@@ -17,8 +18,10 @@ import LoadingOverlay from '@/components/LoadingOverlay';
 import RootNavigator from '@/navigation/RootNavigator';
 import { credentialRepository } from '@/services/credentialRepository';
 import { useDeepLinkStore } from '@/store/deepLinkStore';
+import { useIdentityStore } from '@/store/identityStore';
 import { walletProtocolService } from '@/services/walletProtocolService';
 import { pendingIssuanceService } from '@/services/pendingIssuanceService';
+import { walletIdentityService } from '@/services/walletIdentityService';
 import { INTEGRATION_CONFIG } from '@/config/integration';
 import { walletRegistry } from '@/wallet-core/registry/walletRegistry';
 import { registerWalletBuiltins } from '@/wallet-core/bootstrap/registerBuiltins';
@@ -31,6 +34,7 @@ export default function RootLayout() {
   const hydrateNotifications = useNotificationStore((s) => s.hydrate);
   const hydrateWallet = useWalletWriteStore((s) => s.hydrate);
   const hydrateSettings = useSettingsStore((s) => s.hydrate);
+  const hydrateActivityLogs = useActivityLogStore((s) => s.hydrate);
 
   const authHydrated = useAuthStore((s) => s.isHydrated);
   const notificationHydrated = useNotificationStore((s) => s.isHydrated);
@@ -38,17 +42,41 @@ export default function RootLayout() {
   const settingsHydrated = useSettingsStore((s) => s.isHydrated);
   const isOnboarded = useAuthStore((s) => s.isOnboarded);
 
-  const allHydrated = authHydrated && notificationHydrated && walletHydrated && settingsHydrated;
+  const activityHydrated = useActivityLogStore((s) => s.isHydrated);
+
+  const allHydrated =
+    authHydrated &&
+    notificationHydrated &&
+    walletHydrated &&
+    settingsHydrated &&
+    activityHydrated;
 
   const setPendingDeepLink = useDeepLinkStore((s) => s.setPending);
+  const setIdentityStatus = useIdentityStore((s) => s.setStatus);
 
   const { isDark } = useTheme();
   const inactivityTimer = useInactivityTimer();
   usePushNotifications(allHydrated && isOnboarded);
 
   useEffect(() => {
-    Promise.all([hydrateAuth(), hydrateNotifications(), hydrateWallet(), hydrateSettings(), credentialRepository.hydrate()]);
+    Promise.all([
+      hydrateAuth(),
+      hydrateNotifications(),
+      hydrateWallet(),
+      hydrateSettings(),
+      hydrateActivityLogs(),
+      credentialRepository.hydrate(),
+    ]);
   }, []);
+
+  useEffect(() => {
+    if (!allHydrated || !isOnboarded) return;
+
+    walletIdentityService.ensureReady().catch((error) => {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      setIdentityStatus('error', message);
+    });
+  }, [allHydrated, isOnboarded, setIdentityStatus]);
 
   // ── Deep link handler for OID4VCI auth-code callback and offer URIs ──────────
   useEffect(() => {

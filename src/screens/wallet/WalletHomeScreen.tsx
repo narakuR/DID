@@ -18,7 +18,6 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuthStore } from '@/store/authStore';
 import { useNotificationStore } from '@/store/notificationStore';
 import { RootStackParamList } from '@/navigation/types';
-import { IssuerType } from '@/types';
 import { useTheme } from '@/hooks/useTheme';
 import { COLORS } from '@/constants/colors';
 import SearchBar from '@/components/SearchBar';
@@ -28,6 +27,7 @@ import PendingIssuanceCard from '@/components/PendingIssuanceCard';
 import AlphaIndex from '@/components/AlphaIndex';
 import { useDocumentStore, usePendingIssuanceStore } from '@/wallet-core/facade';
 import type { PendingIssuanceItem, WalletDocument } from '@/wallet-core/facade';
+import { WalletDocumentCategory } from '@/wallet-core/domain/credentialClassifier';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -35,7 +35,25 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-const FILTERS = ['All', ...Object.values(IssuerType)];
+const CATEGORY_LABELS: Record<WalletDocumentCategory, string> = {
+  IDENTITY: 'Identity',
+  TRANSPORT: 'Transport',
+  HEALTH: 'Health',
+  EDUCATION: 'Education',
+  EMPLOYMENT: 'Employment',
+  FINANCIAL: 'Financial',
+  GOVERNMENT: 'Government',
+  TRAVEL: 'Travel',
+  OTHER: 'Other',
+};
+
+const FILTER_OPTIONS = [
+  { value: 'All', label: 'All' },
+  ...Object.values(WalletDocumentCategory).map((category) => ({
+    value: category,
+    label: CATEGORY_LABELS[category],
+  })),
+];
 
 export default function WalletHomeScreen() {
   const navigation = useNavigation<Nav>();
@@ -57,7 +75,7 @@ export default function WalletHomeScreen() {
   const filteredCredentials = useMemo(() => {
     let list = documents;
     if (selectedFilter !== 'All') {
-      list = list.filter((c) => c.issuer.type === selectedFilter);
+      list = list.filter((c) => c.category === selectedFilter);
     }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -76,7 +94,7 @@ export default function WalletHomeScreen() {
     if (searchQuery.trim()) return null;
     const groups: Record<string, WalletDocument[]> = {};
     for (const c of filteredCredentials) {
-      const key = c.issuer.type;
+      const key = c.category;
       if (!groups[key]) groups[key] = [];
       groups[key].push(c);
     }
@@ -116,11 +134,6 @@ export default function WalletHomeScreen() {
       setTimeout(() => setHighlightedId(null), 1500);
     }
   }
-
-  const filterLabels = useMemo(
-    () => ['All', ...Object.keys(IssuerType).map((k) => IssuerType[k as keyof typeof IssuerType])],
-    []
-  );
 
   // Build flat list items for grouped mode
   type ListItem =
@@ -171,7 +184,7 @@ export default function WalletHomeScreen() {
           onPress={() => toggleGroup(item.groupType)}
         >
           <Text style={[styles.groupTitle, { color: colors.textSecondary }]}>
-            {item.groupType}
+            {CATEGORY_LABELS[item.groupType as WalletDocumentCategory] ?? item.groupType}
           </Text>
           {isCollapsed ? (
             <ChevronDown color={colors.textSecondary} size={16} />
@@ -235,7 +248,7 @@ export default function WalletHomeScreen() {
 
       {/* Filter chips */}
       <FilterChips
-        options={filterLabels}
+        options={FILTER_OPTIONS}
         selected={selectedFilter}
         onSelect={setSelectedFilter}
       />

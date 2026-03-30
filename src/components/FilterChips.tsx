@@ -4,7 +4,7 @@ import React from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity } from 'react-native';
 
 interface FilterChipsProps {
-  options: string[];
+  options: Array<string | { value: string; label: string }>;
   selected: string;
   onSelect: (option: string) => void;
 }
@@ -20,11 +20,13 @@ export default function FilterChips({ options, selected, onSelect }: FilterChips
       contentContainerStyle={styles.container}
     >
       {options.map((option) => {
-        const isSelected = option === selected;
+        const value = typeof option === 'string' ? option : option.value;
+        const label = typeof option === 'string' ? option : option.label;
+        const isSelected = value === selected;
         return (
           <TouchableOpacity
-            key={option}
-            onPress={() => onSelect(option)}
+            key={value}
+            onPress={() => onSelect(value)}
             style={[
               styles.chip,
               isSelected
@@ -39,7 +41,7 @@ export default function FilterChips({ options, selected, onSelect }: FilterChips
                 { color: isSelected ? '#FFFFFF' : colors.textSecondary },
               ]}
             >
-              {option}
+              {label}
             </Text>
           </TouchableOpacity>
         );

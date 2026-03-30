@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { storageService } from '@/services/storageService';
+import { activityLogService } from '@/services/activityLogService';
 import { STORAGE_KEYS } from '@/constants/config';
 import { VerifiableCredential } from '@/types';
 import { clearDocuments, syncDocuments } from '@/wallet-core/domain/DocumentStore';
@@ -28,14 +29,20 @@ export const useWalletWriteStore = create<WalletWriteState>((set, get) => ({
   addCredential: async (credential) => {
     const updated = [...get()._credentials, credential];
     await persist(updated);
+    await activityLogService.logReceived(credential);
     set({ _credentials: updated });
   },
 
   revokeCredential: async (id) => {
-    const updated = get()._credentials.map((c) =>
+    const current = get()._credentials;
+    const target = current.find((credential) => credential.id === id);
+    const updated = current.map((c) =>
       c.id === id ? { ...c, status: 'revoked' as const } : c
     );
     await persist(updated);
+    if (target) {
+      await activityLogService.logRevoked({ ...target, status: 'revoked' });
+    }
     set({ _credentials: updated });
   },
 
@@ -54,15 +61,20 @@ export const useWalletWriteStore = create<WalletWriteState>((set, get) => ({
 
   clearWallet: async () => {
     await storageService.removeItem(STORAGE_KEYS.CREDENTIALS);
+    await activityLogService.clear();
     clearDocuments();
     set({ _credentials: [] });
   },
 
   hydrate: async () => {
     const saved = await storageService.getItem<VerifiableCredential[]>(STORAGE_KEYS.CREDENTIALS);
-    syncDocuments(saved ?? []);
+    const persistedCredentials = (saved ?? []).filter((credential) => !!credential._raw);
+    if ((saved?.length ?? 0) !== persistedCredentials.length) {
+      await storageService.setItem(STORAGE_KEYS.CREDENTIALS, persistedCredentials);
+    }
+    syncDocuments(persistedCredentials);
     set({
-      _credentials: saved ?? [],
+      _credentials: persistedCredentials,
       isHydrated: true,
     });
   },

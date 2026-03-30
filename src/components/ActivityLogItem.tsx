@@ -49,19 +49,19 @@ function getActionStyle(action: string, t: (key: string, opts?: object) => strin
       return {
         icon: <ArrowUpRight color={COLORS.status.info} size={18} />,
         color: COLORS.status.info,
-        label: 'Presented',
+        label: t('activity.filterPresented'),
       };
     case 'RECEIVED':
       return {
         icon: <ArrowDownLeft color={COLORS.status.active} size={18} />,
         color: COLORS.status.active,
-        label: 'Received',
+        label: t('activity.filterReceived'),
       };
     case 'REVOKED':
       return {
         icon: <Trash2 color={COLORS.status.error} size={18} />,
         color: COLORS.status.error,
-        label: 'Revoked',
+        label: t('activity.filterRevoked'),
       };
     default:
       return {

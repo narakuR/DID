@@ -1,10 +1,17 @@
 import type { IssuerType, VerifiableCredential } from '@/types';
 import type { ProtocolResult } from '@/wallet-core/types/contracts';
+import {
+  classifyCredential,
+  WalletDocumentCategory,
+} from '@/wallet-core/domain/credentialClassifier';
 
 export interface WalletDocument {
   id: string;
   format: VerifiableCredential['_format'];
   types: string[];
+  category: WalletDocumentCategory;
+  canonicalType: string;
+  displayType: string;
   title: string;
   description?: string;
   issuer: {
@@ -82,11 +89,16 @@ export type WalletOperation =
     };
 
 export function toWalletDocument(credential: VerifiableCredential): WalletDocument {
+  const classification = classifyCredential(credential);
+
   return {
     id: credential.id,
     format: credential._format,
     types: credential.type,
-    title: credential.visual?.title ?? credential.type[1] ?? 'Credential',
+    category: classification.category,
+    canonicalType: classification.canonicalType,
+    displayType: classification.displayType,
+    title: credential.visual?.title ?? classification.displayType,
     description: credential.visual?.description,
     issuer: {
       id: credential.issuer.id,

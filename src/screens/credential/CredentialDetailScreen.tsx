@@ -1,9 +1,8 @@
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ArrowLeft, CheckCircle, Info, QrCode, XCircle } from 'lucide-react-native';
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
-  Animated,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -19,12 +18,12 @@ import { DataRow, DataSection } from '@/components/DataSection';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import Modal from '@/components/Modal';
 import { COLORS } from '@/constants/colors';
-import { MOCK_ACTIVITY_LOGS } from '@/constants/mockData';
 import { useTheme } from '@/hooks/useTheme';
 import { RootStackParamList } from '@/navigation/types';
 import { useDocumentStore } from '@/wallet-core/facade';
+import { useActivityLogStore } from '@/store/activityLogStore';
+import { activityLogService } from '@/services/activityLogService';
 import { biometricService } from '@/services/biometricService';
-import { geminiService } from '@/services/geminiService';
 import { getCredentialStatus } from '@/utils/credentialUtils';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -35,11 +34,9 @@ export default function CredentialDetailScreen() {
   const route = useRoute<Route>();
   const { colors } = useTheme();
   const document = useDocumentStore((s) => s.getDocument(route.params.credentialId));
+  const allActivityLogs = useActivityLogStore((s) => s.logs);
 
   // All hooks must be called before any conditional return
-  const [aiText, setAiText] = useState<string | null>(null);
-  const [aiLoading, setAiLoading] = useState(false);
-  const aiFadeAnim = useRef(new Animated.Value(0)).current;
   const [showQR, setShowQR] = useState(false);
   const [presentLoading, setPresentLoading] = useState(false);
   const [shareModalVisible, setShareModalVisible] = useState(false);
@@ -56,16 +53,10 @@ export default function CredentialDetailScreen() {
 
   const credential = document.credential;
   const statusInfo = getCredentialStatus(credential);
-  const activityLogs = MOCK_ACTIVITY_LOGS.filter((l) => l.credentialId === document.id);
-
-  async function handleAiExplain() {
-    setAiLoading(true);
-    const result = await geminiService.explainCredential(credential);
-    setAiText(result);
-    setAiLoading(false);
-    aiFadeAnim.setValue(0);
-    Animated.timing(aiFadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
-  }
+  const activityLogs = useMemo(
+    () => allActivityLogs.filter((log) => log.credentialId === document.id),
+    [allActivityLogs, document.id]
+  );
 
   async function handlePresent() {
     setPresentLoading(true);
@@ -73,6 +64,7 @@ export default function CredentialDetailScreen() {
     const success = await biometricService.authenticate('Verify identity to present credential');
     setPresentLoading(false);
     if (success) {
+      await activityLogService.logPresented(credential);
       setShowQR(true);
     }
   }
@@ -191,22 +183,6 @@ export default function CredentialDetailScreen() {
               return <DataRow key={k} label={k} value={String(v)} />;
             })}
         </DataSection>
-
-        {/* AI Explanation */}
-        <View style={[styles.aiCard, { backgroundColor: COLORS.euBlue + '12', borderColor: COLORS.euBlue + '30' }]}>
-          <Text style={[styles.aiCardTitle, { color: colors.text }]}>AI Explanation</Text>
-          {aiText ? (
-            <Animated.Text style={[styles.aiText, { color: colors.text, opacity: aiFadeAnim }]}>
-              {aiText}
-            </Animated.Text>
-          ) : aiLoading ? (
-            <Text style={[styles.aiText, { color: colors.textSecondary }]}>Analyzing credential…</Text>
-          ) : (
-            <TouchableOpacity style={styles.aiButton} onPress={handleAiExplain}>
-              <Text style={styles.aiButtonText}>Explain with AI</Text>
-            </TouchableOpacity>
-          )}
-        </View>
 
         {/* Credential History */}
         <View style={[styles.historySection, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -329,31 +305,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: 6,
     marginTop: 4,
-  },
-  aiCard: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 16,
-    gap: 12,
-  },
-  aiCardTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  aiText: {
-    fontSize: 14,
-    lineHeight: 21,
-  },
-  aiButton: {
-    backgroundColor: COLORS.euBlue,
-    borderRadius: 10,
-    padding: 12,
-    alignItems: 'center',
-  },
-  aiButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
   },
   historySection: {
     borderRadius: 12,
