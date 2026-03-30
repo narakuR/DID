@@ -53,6 +53,10 @@ function buildWalletMetadata() {
         'sd-jwt_alg_values': ['EdDSA', 'ES256', 'RS256'],
         'kb-jwt_alg_values': ['EdDSA', 'ES256', 'RS256'],
       },
+      mso_mdoc: {
+        'issuerauth_alg_values': [-7, -35, -36],
+        'deviceauth_alg_values': [-7, -35, -36],
+      },
     },
   };
 }
@@ -78,7 +82,10 @@ export async function fetchRequestObjectJwt(
       body: body.toString(),
     });
     if (!response.ok) {
-      throw new Error(`Failed to fetch request object (${response.status})`);
+      const body = await response.text().catch(() => '');
+      throw new Error(
+        `Failed to fetch request object (${response.status}) [method=POST url=${normalizedUri}]${body ? `: ${body}` : ''}`
+      );
     }
     return response.text();
   }
@@ -90,7 +97,10 @@ export async function fetchRequestObjectJwt(
     },
   });
   if (!response.ok) {
-    throw new Error(`Failed to fetch request object (${response.status})`);
+    const body = await response.text().catch(() => '');
+    throw new Error(
+      `Failed to fetch request object (${response.status}) [method=${method} url=${normalizedUri}]${body ? `: ${body}` : ''}`
+    );
   }
   return response.text();
 }

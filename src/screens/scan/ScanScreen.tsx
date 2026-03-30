@@ -33,6 +33,7 @@ export default function ScanScreen() {
 
   const [scanned, setScanned] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const scanLockRef = useRef(false);
 
   const scanLineAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -100,11 +101,13 @@ export default function ScanScreen() {
     } finally {
       setProcessing(false);
       setScanned(false);
+      scanLockRef.current = false;
     }
   }
 
   async function handleBarcodeScan(data: string) {
-    if (scanned) return;
+    if (scanned || scanLockRef.current) return;
+    scanLockRef.current = true;
     setScanned(true);
     await handleProtocolUri(data);
   }
@@ -127,6 +130,7 @@ export default function ScanScreen() {
       Alert.alert('识别失败', '无法从该图片中读取二维码。');
       setScanned(false);
       setProcessing(false);
+      scanLockRef.current = false;
     }
   }
 

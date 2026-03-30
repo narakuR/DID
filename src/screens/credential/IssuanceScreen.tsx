@@ -31,6 +31,7 @@ import { useTheme } from '@/hooks/useTheme';
 import { COLORS } from '@/constants/colors';
 import { INTEGRATION_CONFIG } from '@/config/integration';
 import { protocolFlowService } from '@/services/protocolFlowService';
+import { walletIdentityService } from '@/services/walletIdentityService';
 import { useIdentityStore } from '@/store/identityStore';
 import { oid4vciClient } from '@/wallet-core/protocol/oid4vci/client';
 import { listAvailableIssuerCredentialConfigurations } from '@/wallet-core/protocol/oid4vci/offerResolver';
@@ -203,13 +204,21 @@ export default function IssuanceScreen() {
 
   async function handleIssueCredential(credentialConfigurationId: string) {
     if (identityStatus !== 'ready') {
-      Alert.alert(
-        '钱包身份尚未就绪',
-        identityStatus === 'error'
-          ? `钱包身份初始化失败：${identityError ?? 'Unknown error'}`
-          : '钱包正在初始化身份与密钥，请稍后再试。'
-      );
-      return;
+      setBusyAction(`issue:${credentialConfigurationId}`);
+      try {
+        await walletIdentityService.ensureReady(true);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        Alert.alert('钱包身份尚未就绪', `钱包身份初始化失败：${message}`);
+        return;
+      } finally {
+        setBusyAction(null);
+      }
+
+      if (useIdentityStore.getState().status !== 'ready') {
+        Alert.alert('钱包身份尚未就绪', '需要完成设备认证后才能初始化钱包身份。');
+        return;
+      }
     }
 
     setBusyAction(`issue:${credentialConfigurationId}`);
@@ -349,6 +358,8 @@ export default function IssuanceScreen() {
                     ? '#E8F5E9'
                     : identityStatus === 'error'
                       ? '#FEE2E2'
+                      : identityStatus === 'idle'
+                        ? '#FFF7ED'
                       : '#EFF6FF',
               },
             ]}
@@ -362,6 +373,8 @@ export default function IssuanceScreen() {
                       ? '#166534'
                       : identityStatus === 'error'
                         ? '#991B1B'
+                        : identityStatus === 'idle'
+                          ? '#9A3412'
                         : '#1D4ED8',
                 },
               ]}
@@ -370,7 +383,9 @@ export default function IssuanceScreen() {
                 ? '钱包身份已就绪，可直接领取和出示证件'
                 : identityStatus === 'error'
                   ? `钱包身份初始化失败：${identityError ?? 'Unknown error'}`
-                  : '正在初始化钱包身份与签名密钥…'}
+                  : identityStatus === 'idle'
+                    ? '钱包身份尚未初始化，首次领取时将触发设备认证并完成创建'
+                    : '正在初始化钱包身份与签名密钥…'}
             </Text>
           </View>
 

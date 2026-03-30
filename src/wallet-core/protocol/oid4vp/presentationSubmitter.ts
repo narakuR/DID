@@ -50,6 +50,14 @@ export async function submitPresentation(
         };
       }
 
+      if (match.credential._format === 'mso_mdoc') {
+        return {
+          type: 'error',
+          message:
+            '当前版本暂不支持 mso_mdoc 通过 OID4VP 出示。已支持 mdoc 领取，但 mdoc 出示仍需实现 DeviceResponse 生成。',
+        };
+      }
+
       let presentationEntry = rawCredential;
       if (
         match.credential._format === 'sd-jwt-vc' &&
@@ -87,9 +95,10 @@ export async function submitPresentation(
     });
 
     if (!submitRes.ok) {
+      const body = await submitRes.text().catch(() => '');
       return {
         type: 'error',
-        message: `VP submission failed (${submitRes.status})`,
+        message: `VP submission failed (${submitRes.status})${body ? `: ${body}` : ''}`,
       };
     }
 

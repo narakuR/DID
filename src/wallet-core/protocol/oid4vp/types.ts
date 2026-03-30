@@ -13,7 +13,7 @@ export interface RequestObject {
     credentials?: {
       id?: string;
       format?: string;
-      meta?: { type?: string; vct_values?: string[] };
+      meta?: { type?: string; vct_values?: string[]; doctype_value?: string };
       claims?: { path?: string[] }[];
     }[];
   };
