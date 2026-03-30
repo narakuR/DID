@@ -31,11 +31,15 @@ export class KeyManager {
     const bindingMethods = options.bindingMethodsSupported ?? [];
     const proofAlgs = options.proofSigningAlgValuesSupported ?? [];
     const supportsDidJwk =
-      bindingMethods.length === 0 || bindingMethods.includes('did:jwk');
+      bindingMethods.length === 0 ||
+      bindingMethods.includes('did:jwk') ||
+      bindingMethods.includes('jwk');
     const supportsDidKey =
       bindingMethods.length === 0 || bindingMethods.includes('did:key');
     const supportsEs256 = proofAlgs.includes('ES256');
     const supportsEdDsa = proofAlgs.length === 0 || proofAlgs.includes('EdDSA');
+    const rejectsDidJwk = bindingMethods.length > 0 && !supportsDidJwk;
+    const prefersEs256 = supportsEs256;
 
     const fallbackToEhicRule =
       options.credentialConfigurationId ===
@@ -44,7 +48,7 @@ export class KeyManager {
       options.credentialFormat === 'mso_mdoc' ||
       options.credentialConfigurationId.toLowerCase().includes('mdoc');
 
-    if ((supportsDidJwk && supportsEs256) || fallbackToEhicRule || (supportsDidJwk && fallbackToMdocRule)) {
+    if (fallbackToMdocRule) {
       const metadata = await requireDidJwkMetadata();
       return {
         did: metadata.did,
@@ -54,19 +58,29 @@ export class KeyManager {
       };
     }
 
-    if (!supportsDidKey || !supportsEdDsa) {
-      throw new Error(
-        'Issuer credential configuration does not support a compatible proof key binding method.'
-      );
+    if (!rejectsDidJwk && (prefersEs256 || fallbackToEhicRule)) {
+      const metadata = await requireDidJwkMetadata();
+      return {
+        did: metadata.did,
+        keyId: metadata.keyId,
+        alg: 'ES256',
+        method: 'did:jwk',
+      };
     }
 
-    const metadata = await requireDidKeyMetadata();
-    return {
-      did: metadata.did,
-      keyId: metadata.keyId,
-      alg: 'EdDSA',
-      method: 'did:key',
-    };
+    if (supportsDidKey && supportsEdDsa) {
+      const metadata = await requireDidKeyMetadata();
+      return {
+        did: metadata.did,
+        keyId: metadata.keyId,
+        alg: 'EdDSA',
+        method: 'did:key',
+      };
+    }
+
+    throw new Error(
+      'Issuer credential configuration does not support a compatible proof key binding method.'
+    );
   }
 
   async getSdJwtKeyBindingKey(options: {

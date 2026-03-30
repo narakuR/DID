@@ -18,6 +18,17 @@ export interface WalletDocument {
   credential: VerifiableCredential;
 }
 
+export interface PendingIssuanceItem {
+  id: string;
+  uri: string;
+  credentialConfigurationId?: string;
+  title: string;
+  subtitle?: string;
+  issuerName: string;
+  startedAt: string;
+  state: 'issuing';
+}
+
 export interface IssuanceSession {
   id: string;
   uri: string;

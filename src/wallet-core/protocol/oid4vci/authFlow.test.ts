@@ -205,6 +205,7 @@ describe('authFlow', () => {
         [
           ProtocolContext,
           string,
+          string,
           unknown,
           { credential?: unknown; credentials?: ({ credential?: unknown } | unknown)[] }
         ]
@@ -233,6 +234,9 @@ describe('authFlow', () => {
     );
 
     expect(oid4vciClient.retrieveAuthorizationCodeAccessTokenFromOffer).toHaveBeenCalled();
+    expect(storageService.removeItem.mock.invocationCallOrder[0]).toBeLessThan(
+      oid4vciClient.retrieveAuthorizationCodeAccessTokenFromOffer.mock.invocationCallOrder[0]
+    );
     expect(buildCredentialRequestProof).toHaveBeenCalledWith({
       issuerMetadata: { authorizationServers: [{ issuer: 'as-1' }] },
       credentialConfigurationId: 'config-1',
@@ -258,6 +262,7 @@ describe('authFlow', () => {
     });
     expect(toCredentialReceivedResult).toHaveBeenCalledWith(
       ctx,
+      'https://issuer.example',
       'config-1',
       { authorizationServers: [{ issuer: 'as-1' }] },
       { credential: 'raw-cred' }

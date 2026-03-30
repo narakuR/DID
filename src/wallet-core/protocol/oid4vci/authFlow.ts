@@ -73,6 +73,7 @@ export async function finishAuthorizationCodeFlow(
   ctx: ProtocolContext,
   toCredentialReceivedResult: (
     ctx: ProtocolContext,
+    credentialIssuer: string,
     credentialConfigurationId: string,
     issuerMetadata: unknown,
     credentialResponse: Awaited<ReturnType<typeof requestCredentialWithIssuerCompat>>
@@ -106,6 +107,10 @@ export async function finishAuthorizationCodeFlow(
       message: errorMessage,
     };
   }
+
+  // Consume the pending auth request before the token exchange so the same
+  // callback URL cannot redeem the authorization code twice.
+  await clearPendingAuthRequest();
 
   const tokenResult =
     await oid4vciClient.retrieveAuthorizationCodeAccessTokenFromOffer({
@@ -141,9 +146,9 @@ export async function finishAuthorizationCodeFlow(
     proofJwt: proof.jwt,
   });
 
-  await clearPendingAuthRequest();
   return toCredentialReceivedResult(
     ctx,
+    pending.credentialOffer.credential_issuer,
     pending.credentialConfigurationId,
     pending.issuerMetadata,
     credentialResponse

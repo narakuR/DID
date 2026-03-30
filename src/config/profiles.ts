@@ -2,13 +2,13 @@ import { APP_CONFIG } from './app';
 
 const issuerTransportBaseUrl =
   process.env.EXPO_PUBLIC_ISSUER_BASE_URL ||
-  `http://${APP_CONFIG.localHostAlias}/pid-issuer`;
+  `http://${APP_CONFIG.localHostAlias}:8082/pid-issuer`;
 const issuerPublicBaseUrl =
   process.env.EXPO_PUBLIC_ISSUER_PUBLIC_BASE_URL ||
   'https://localhost:8444/pid-issuer';
 const issuerAuthorizationServerTransportBaseUrl =
   process.env.EXPO_PUBLIC_ISSUER_AUTHORIZATION_SERVER_BASE_URL ||
-  `http://${APP_CONFIG.localHostAlias}/idp`;
+  `http://${APP_CONFIG.localHostAlias}:8082/idp`;
 const issuerAuthorizationServerPublicBaseUrl =
   process.env.EXPO_PUBLIC_ISSUER_AUTHORIZATION_SERVER_PUBLIC_BASE_URL ||
   'https://localhost:8444/idp';

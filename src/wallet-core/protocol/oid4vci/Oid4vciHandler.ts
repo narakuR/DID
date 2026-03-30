@@ -36,7 +36,7 @@ export class Oid4vciHandler implements IProtocolHandler {
   async handle(uri: string, ctx: ProtocolContext): Promise<ProtocolResult> {
     try {
       if (isOid4vciCallback(uri)) {
-        return finishAuthorizationCodeFlow(uri, ctx, toCredentialReceivedResult);
+      return finishAuthorizationCodeFlow(uri, ctx, toCredentialReceivedResult);
       }
 
       const credentialOffer = await resolveCredentialOffer(uri);
@@ -96,6 +96,7 @@ export class Oid4vciHandler implements IProtocolHandler {
 
       return toCredentialReceivedResult(
         ctx,
+        credentialOffer.credential_issuer,
         credentialConfigurationId,
         issuerMetadata,
         credentialResponse

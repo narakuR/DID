@@ -24,9 +24,10 @@ import { COLORS } from '@/constants/colors';
 import SearchBar from '@/components/SearchBar';
 import FilterChips from '@/components/FilterChips';
 import CredentialCard from '@/components/CredentialCard';
+import PendingIssuanceCard from '@/components/PendingIssuanceCard';
 import AlphaIndex from '@/components/AlphaIndex';
-import { useDocumentStore } from '@/wallet-core/facade';
-import type { WalletDocument } from '@/wallet-core/facade';
+import { useDocumentStore, usePendingIssuanceStore } from '@/wallet-core/facade';
+import type { PendingIssuanceItem, WalletDocument } from '@/wallet-core/facade';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -40,6 +41,7 @@ export default function WalletHomeScreen() {
   const navigation = useNavigation<Nav>();
   const { colors } = useTheme();
   const documents = useDocumentStore((s) => s.documents);
+  const pendingIssuance = usePendingIssuanceStore((s) => s.current);
   const user = useAuthStore((s) => s.user);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -123,13 +125,24 @@ export default function WalletHomeScreen() {
   // Build flat list items for grouped mode
   type ListItem =
     | { type: 'header'; groupType: string }
+    | { type: 'pending'; pending: PendingIssuanceItem }
     | { type: 'document'; document: WalletDocument };
 
   const listData: ListItem[] = useMemo(() => {
+    const pendingItems: ListItem[] = pendingIssuance
+      ? [{ type: 'pending', pending: pendingIssuance }]
+      : [];
+
     if (searchQuery.trim() || !groupedCredentials) {
-      return filteredCredentials.map((document) => ({ type: 'document' as const, document }));
+      return [
+        ...pendingItems,
+        ...filteredCredentials.map((document) => ({ type: 'document' as const, document })),
+      ];
     }
     const items: ListItem[] = [];
+    if (pendingItems.length > 0) {
+      items.push(...pendingItems);
+    }
     for (const [groupType, creds] of Object.entries(groupedCredentials)) {
       items.push({ type: 'header', groupType });
       if (!collapsedGroups.has(groupType)) {
@@ -139,9 +152,17 @@ export default function WalletHomeScreen() {
       }
     }
     return items;
-  }, [groupedCredentials, filteredCredentials, collapsedGroups, searchQuery]);
+  }, [groupedCredentials, filteredCredentials, collapsedGroups, searchQuery, pendingIssuance]);
 
   function renderItem({ item }: { item: ListItem }) {
+    if (item.type === 'pending') {
+      return (
+        <View style={styles.cardWrapper}>
+          <PendingIssuanceCard item={item.pending} />
+        </View>
+      );
+    }
+
     if (item.type === 'header') {
       const isCollapsed = collapsedGroups.has(item.groupType);
       return (
@@ -225,7 +246,11 @@ export default function WalletHomeScreen() {
           ref={listRef}
           data={listData}
           keyExtractor={(item, index) =>
-            item.type === 'header' ? `header-${item.groupType}` : item.document.id
+            item.type === 'header'
+              ? `header-${item.groupType}`
+              : item.type === 'pending'
+                ? `pending-${item.pending.id}:${index}`
+                : `${item.document.id}:${index}`
           }
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}

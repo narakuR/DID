@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { Alert, View, StyleSheet, TouchableOpacity } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -47,8 +47,16 @@ export default function TabNavigator() {
     } else if (pending.kind === 'issuance_completed') {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       clear();
+      navigation.navigate('Main', { screen: 'Wallet' });
+      Alert.alert(
+        '签证领取成功',
+        pending.session.documents.length > 0
+          ? `已成功保存 ${pending.session.documents.length} 张凭证。`
+          : '凭证已成功保存到钱包。'
+      );
     } else if (pending.kind === 'failure') {
       clear();
+      Alert.alert('流程失败', pending.message);
     } else {
       clear();
     }

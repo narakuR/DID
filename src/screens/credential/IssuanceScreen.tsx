@@ -386,11 +386,11 @@ export default function IssuanceScreen() {
                   ) : null}
                 </View>
               ) : (
-                issuerCredentialOptions.map((option) => {
+                issuerCredentialOptions.map((option, index) => {
                   const loading = busyAction === `issue:${option.id}`;
                   return (
                     <TouchableOpacity
-                      key={option.id}
+                      key={`${option.id}:${option.source ?? 'issuer'}:${index}`}
                       style={[
                         styles.issuerOptionCard,
                         { backgroundColor: colors.surface, borderColor: colors.border },

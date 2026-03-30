@@ -15,6 +15,13 @@ export type PendingOid4vciAuth = {
 export type IssuerCredentialResponse = {
   credential?: unknown;
   credentials?: ({ credential?: unknown } | unknown)[];
+  transaction_id?: string;
+  acceptance_token?: string;
+  interval?: number;
+  c_nonce?: string;
+  c_nonce_expires_in?: number;
+  error?: string;
+  error_description?: string;
 };
 
 export type IssuerCredentialConfiguration = {

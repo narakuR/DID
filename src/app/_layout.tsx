@@ -1,9 +1,10 @@
 import React, { useEffect } from 'react';
-import { Linking, View } from 'react-native';
+import { Linking, Platform, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
+import * as WebBrowser from 'expo-web-browser';
 
 import { useAuthStore } from '@/store/authStore';
 import { useNotificationStore } from '@/store/notificationStore';
@@ -17,11 +18,13 @@ import RootNavigator from '@/navigation/RootNavigator';
 import { credentialRepository } from '@/services/credentialRepository';
 import { useDeepLinkStore } from '@/store/deepLinkStore';
 import { walletProtocolService } from '@/services/walletProtocolService';
+import { pendingIssuanceService } from '@/services/pendingIssuanceService';
 import { INTEGRATION_CONFIG } from '@/config/integration';
 import { walletRegistry } from '@/wallet-core/registry/walletRegistry';
 import { registerWalletBuiltins } from '@/wallet-core/bootstrap/registerBuiltins';
 
 registerWalletBuiltins();
+WebBrowser.maybeCompleteAuthSession();
 
 export default function RootLayout() {
   const hydrateAuth = useAuthStore((s) => s.hydrate);
@@ -51,29 +54,61 @@ export default function RootLayout() {
   useEffect(() => {
     if (!allHydrated) return;
 
+    const processWalletUrl = (url: string) => {
+      if (!walletRegistry.routeProtocol(url)) {
+        return;
+      }
+
+      walletProtocolService.handleUriOperation(url).then((result) => {
+        if (result.kind === 'issuance_completed') {
+          pendingIssuanceService.complete();
+        } else if (result.kind === 'failure') {
+          pendingIssuanceService.fail();
+        }
+        setPendingDeepLink(result);
+      });
+    };
+
     const isHandledByAuthSession = (url: string) =>
-      url.startsWith(INTEGRATION_CONFIG.app.issuanceRedirectUri) ||
-      url.startsWith(INTEGRATION_CONFIG.app.presentationRedirectUri);
+      Platform.OS !== 'android' &&
+      (url.startsWith(INTEGRATION_CONFIG.app.issuanceRedirectUri) ||
+        url.startsWith(INTEGRATION_CONFIG.app.presentationRedirectUri));
+
+    const isAndroidBrowserCallback = (url: string) =>
+      Platform.OS === 'android' &&
+      (url.startsWith(INTEGRATION_CONFIG.app.issuanceRedirectUri) ||
+        url.startsWith(INTEGRATION_CONFIG.app.presentationRedirectUri));
 
     const handleUrl = ({ url }: { url: string }) => {
       if (isHandledByAuthSession(url)) {
         return;
       }
 
-      if (walletRegistry.routeProtocol(url)) {
-        walletProtocolService.handleUriOperation(url).then((result) => {
-          setPendingDeepLink(result);
-        });
+      if (isAndroidBrowserCallback(url)) {
+        try {
+          WebBrowser.dismissBrowser();
+        } catch {
+          // ignore browser dismiss errors on Android callback handoff
+        }
+        processWalletUrl(url);
+        return;
       }
+
+      processWalletUrl(url);
     };
 
     const subscription = Linking.addEventListener('url', handleUrl);
     // Also check if the app was cold-started with a URL
     void Linking.getInitialURL().then((url) => {
-      if (url && !isHandledByAuthSession(url) && walletRegistry.routeProtocol(url)) {
-        walletProtocolService.handleUriOperation(url).then((result) => {
-          setPendingDeepLink(result);
-        });
+      if (url && !isHandledByAuthSession(url)) {
+        if (isAndroidBrowserCallback(url)) {
+          try {
+            WebBrowser.dismissBrowser();
+          } catch {
+            // ignore browser dismiss errors on Android callback handoff
+          }
+        }
+        processWalletUrl(url);
       }
     });
 

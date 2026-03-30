@@ -128,6 +128,23 @@ describe('KeyManager', () => {
     expect(key.alg).toBe('ES256');
   });
 
+  it('mso_mdoc 即使 metadata 未声明 did:jwk 也优先尝试 did:jwk / ES256', async () => {
+    didJwkProvider.getStoredMetadata.mockResolvedValue({
+      did: 'did:jwk:test',
+      keyId: 'did:jwk:test#0',
+    });
+
+    const key = await keyManager.getCredentialProofKey({
+      credentialConfigurationId: 'eu.europa.ec.eudi_mso_mdoc',
+      credentialFormat: 'mso_mdoc',
+      bindingMethodsSupported: ['cose_key'],
+      proofSigningAlgValuesSupported: ['ES256'],
+    });
+
+    expect(key.method).toBe('did:jwk');
+    expect(key.alg).toBe('ES256');
+  });
+
   it('P-256 cnf 的 key binding 选择 did:jwk / ES256', async () => {
     didJwkProvider.getStoredMetadata.mockResolvedValue({
       did: 'did:jwk:test',
