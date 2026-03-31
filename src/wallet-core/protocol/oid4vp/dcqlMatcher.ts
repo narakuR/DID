@@ -80,23 +80,19 @@ export function selectMatches(
   credentials: VerifiableCredential[]
 ): StoredPresentationRequest['matched'] {
   const queries = requestObject.dcql_query?.credentials ?? [];
-  return queries
+  const matches = queries
     .map((query, index) => {
       const credential = credentials.find((item) => matchCredentialQuery(item, query));
       if (!credential) return null;
       return {
         credential,
         disclosedClaims: extractDisclosedClaims(query),
+        requestedClaims: query.claims ?? [],
+        format: query.format,
+        docType: query.meta?.doctype_value,
         queryId: query.id ?? `cred_${index + 1}`,
       };
-    })
-    .filter(
-      (
-        item
-      ): item is {
-        credential: VerifiableCredential;
-        disclosedClaims: string[];
-        queryId: string;
-      } => Boolean(item)
-    );
+    });
+
+  return matches.filter((item): item is NonNullable<typeof item> => item !== null);
 }

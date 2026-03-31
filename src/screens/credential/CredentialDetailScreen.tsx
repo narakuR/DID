@@ -21,6 +21,10 @@ import { COLORS } from '@/constants/colors';
 import { useTheme } from '@/hooks/useTheme';
 import { RootStackParamList } from '@/navigation/types';
 import { useDocumentStore } from '@/wallet-core/facade';
+import {
+  getPresentationStateLabel,
+  getPresentationSupportLabel,
+} from '@/wallet-core/domain/presentationLabels';
 import { useActivityLogStore } from '@/store/activityLogStore';
 import { activityLogService } from '@/services/activityLogService';
 import { biometricService } from '@/services/biometricService';
@@ -53,6 +57,7 @@ export default function CredentialDetailScreen() {
 
   const credential = document.credential;
   const statusInfo = getCredentialStatus(credential);
+  const presentationReason = document.presentationCapabilities.reasons[0];
   const activityLogs = useMemo(
     () => allActivityLogs.filter((log) => log.credentialId === document.id),
     [allActivityLogs, document.id]
@@ -149,6 +154,33 @@ export default function CredentialDetailScreen() {
             value={new Date(document.expirationDate).toLocaleDateString()}
             highlighted={statusInfo.isExpired}
           />
+        </DataSection>
+
+        <DataSection icon={<CheckCircle color={COLORS.euBlue} size={16} />} title="Presentation">
+          <DataRow
+            label="Remote OID4VP"
+            value={getPresentationSupportLabel(document.presentationCapabilities.remoteOid4vp)}
+          />
+          <DataRow
+            label="Proximity"
+            value={getPresentationSupportLabel(document.presentationCapabilities.proximity)}
+          />
+          <DataRow
+            label="Binding"
+            value={
+              document.presentationBinding.type === 'document-device-key'
+                ? 'Document device key'
+                : 'Holder key'
+            }
+          />
+          <DataRow
+            label="State"
+            value={getPresentationStateLabel(document.presentationState)}
+            highlighted={document.presentationState !== 'ready'}
+          />
+          {presentationReason ? (
+            <DataRow label="Recovery" value={presentationReason} />
+          ) : null}
         </DataSection>
 
         {/* Issuer section */}

@@ -55,6 +55,27 @@ export interface StoredCredential {
   displayModel: VerifiableCredential;
 }
 
+export type DocumentKeyBindingState =
+  | 'ready'
+  | 'missing_device_key'
+  | 'migration_required'
+  | 'reissuance_required';
+
+export interface DocumentKeyBindingRecord {
+  documentId: string;
+  format: 'mso_mdoc';
+  docType: string;
+  bindingType: 'document-device-key';
+  strategy: 'stored-document-jwk' | 'linked-did-jwk';
+  keyRef: string;
+  did?: string;
+  keyId?: string;
+  algorithm: 'ES256';
+  state: DocumentKeyBindingState;
+  reason?: string;
+  updatedAt: string;
+}
+
 export interface ActivityLog {
   id: string;
   credentialId: string;

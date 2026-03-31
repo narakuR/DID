@@ -28,6 +28,10 @@ import AlphaIndex from '@/components/AlphaIndex';
 import { useDocumentStore, usePendingIssuanceStore } from '@/wallet-core/facade';
 import type { PendingIssuanceItem, WalletDocument } from '@/wallet-core/facade';
 import { WalletDocumentCategory } from '@/wallet-core/domain/credentialClassifier';
+import {
+  getPresentationStateLabel,
+  getPresentationSupportLabel,
+} from '@/wallet-core/domain/presentationLabels';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -210,6 +214,47 @@ export default function WalletHomeScreen() {
         activeOpacity={0.85}
       >
         <CredentialCard document={document} showStatus />
+        <View style={styles.capabilityRow}>
+          <View
+            style={[
+              styles.capabilityChip,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <Text style={[styles.capabilityChipLabel, { color: colors.textSecondary }]}>
+              Remote
+            </Text>
+            <Text style={[styles.capabilityChipValue, { color: colors.text }]}>
+              {getPresentationSupportLabel(document.presentationCapabilities.remoteOid4vp)}
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.capabilityChip,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <Text style={[styles.capabilityChipLabel, { color: colors.textSecondary }]}>
+              Proximity
+            </Text>
+            <Text style={[styles.capabilityChipValue, { color: colors.text }]}>
+              {getPresentationSupportLabel(document.presentationCapabilities.proximity)}
+            </Text>
+          </View>
+          {document.presentationState !== 'ready' ? (
+            <View
+              style={[
+                styles.capabilityChip,
+                styles.capabilityWarning,
+                { borderColor: colors.border },
+              ]}
+            >
+              <Text style={[styles.capabilityChipValue, { color: '#92400E' }]}>
+                {getPresentationStateLabel(document.presentationState)}
+              </Text>
+            </View>
+          ) : null}
+        </View>
       </TouchableOpacity>
     );
   }
@@ -368,6 +413,32 @@ const styles = StyleSheet.create({
   },
   cardWrapper: {
     borderRadius: 16,
+  },
+  capabilityRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  capabilityChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  capabilityChipLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  capabilityChipValue: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  capabilityWarning: {
+    backgroundColor: '#FEF3C7',
   },
   highlighted: {
     shadowColor: COLORS.euBlue,

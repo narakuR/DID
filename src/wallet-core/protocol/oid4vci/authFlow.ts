@@ -9,6 +9,7 @@ import { INTEGRATION_CONFIG } from '@/config/integration';
 import { oid4vciClient } from './client';
 import { buildCredentialRequestProof } from './proofBuilder';
 import { requestCredentialWithIssuerCompat } from './credentialMapper';
+import { createPendingMdocBinding } from '@/wallet-core/domain/DocumentKeyStore';
 import {
   resolveCredentialConfigId,
   resolveCredentialConfiguration,
@@ -38,6 +39,14 @@ export async function startAuthorizationCodeFlow(
     credentialOffer,
     issuerMetadata
   );
+  const resolvedCredentialConfiguration = resolveCredentialConfiguration(
+    credentialConfigurationId,
+    issuerMetadata
+  );
+  const pendingBinding =
+    resolvedCredentialConfiguration.format === 'mso_mdoc'
+      ? await createPendingMdocBinding().catch(() => null)
+      : null;
   const authorization = await oid4vciClient.initiateAuthorization({
     credentialOffer,
     issuerMetadata,
@@ -60,6 +69,7 @@ export async function startAuthorizationCodeFlow(
     credentialConfigurationId,
     pkceCodeVerifier: authorization.pkce?.codeVerifier,
     redirectUri: INTEGRATION_CONFIG.app.issuanceRedirectUri,
+    pendingDocumentKeyId: pendingBinding?.pendingBindingId,
   });
 
   return {
@@ -76,7 +86,8 @@ export async function finishAuthorizationCodeFlow(
     credentialIssuer: string,
     credentialConfigurationId: string,
     issuerMetadata: unknown,
-    credentialResponse: Awaited<ReturnType<typeof requestCredentialWithIssuerCompat>>
+    credentialResponse: Awaited<ReturnType<typeof requestCredentialWithIssuerCompat>>,
+    pendingDocumentKeyId?: string
   ) => Promise<ProtocolResult>
 ): Promise<ProtocolResult> {
   const pending = await loadPendingAuthRequest();
@@ -137,6 +148,7 @@ export async function finishAuthorizationCodeFlow(
       resolvedCredentialConfiguration.bindingMethodsSupported,
     proofSigningAlgValuesSupported:
       resolvedCredentialConfiguration.proofSigningAlgValuesSupported,
+    pendingDocumentKeyId: pending.pendingDocumentKeyId,
   });
 
   const credentialResponse = await requestCredentialWithIssuerCompat({
@@ -151,6 +163,7 @@ export async function finishAuthorizationCodeFlow(
     pending.credentialOffer.credential_issuer,
     pending.credentialConfigurationId,
     pending.issuerMetadata,
-    credentialResponse
+    credentialResponse,
+    proof.pendingDocumentKeyId ?? pending.pendingDocumentKeyId
   );
 }

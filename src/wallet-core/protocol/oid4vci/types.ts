@@ -10,6 +10,7 @@ export type PendingOid4vciAuth = {
   credentialConfigurationId: string;
   pkceCodeVerifier?: string;
   redirectUri: string;
+  pendingDocumentKeyId?: string;
 };
 
 export type IssuerCredentialResponse = {

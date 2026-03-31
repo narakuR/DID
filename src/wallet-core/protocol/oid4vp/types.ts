@@ -30,6 +30,9 @@ export interface StoredPresentationRequest {
   matched: {
     credential: VerifiableCredential;
     disclosedClaims: string[];
+    requestedClaims: { path?: string[] }[];
+    format?: string;
+    docType?: string;
     queryId: string;
   }[];
   verifier: string;

@@ -244,6 +244,7 @@ describe('authFlow', () => {
       nonce: 'nonce-1',
       bindingMethodsSupported: ['did:jwk'],
       proofSigningAlgValuesSupported: ['ES256'],
+      pendingDocumentKeyId: undefined,
     });
     expect(requestCredentialWithIssuerCompat).toHaveBeenCalledWith({
       accessToken: 'access-token',
@@ -265,7 +266,8 @@ describe('authFlow', () => {
       'https://issuer.example',
       'config-1',
       { authorizationServers: [{ issuer: 'as-1' }] },
-      { credential: 'raw-cred' }
+      { credential: 'raw-cred' },
+      undefined
     );
   });
 

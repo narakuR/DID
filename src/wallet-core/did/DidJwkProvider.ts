@@ -55,6 +55,16 @@ function pubKeyToJwk(pubKeyBytes: Uint8Array): {
   };
 }
 
+function privateSeedToJwk(seed: Uint8Array): {
+  kty: string; crv: string; x: string; y: string; d: string;
+} {
+  const publicJwk = pubKeyToJwk(p256.getPublicKey(seed, false));
+  return {
+    ...publicJwk,
+    d: bytesToBase64Url(seed),
+  };
+}
+
 function jwkToDid(jwk: { kty: string; crv: string; x: string; y: string }): string {
   return `did:jwk:${stringToBase64Url(JSON.stringify(jwk))}`;
 }
@@ -140,6 +150,17 @@ export class DidJwkProvider implements IDIDProvider {
 
   async getStoredMetadata(): Promise<DIDMetadata | null> {
     return storageService.getItem<DIDMetadata>(STORAGE_KEY_JWK_META);
+  }
+
+  async exportPrivateJwk(): Promise<{
+    kty: string; crv: string; x: string; y: string; d: string;
+  }> {
+    const stored = await SecureStore.getItemAsync(SECURE_KEY_JWK, {
+      requireAuthentication: true,
+      authenticationPrompt: '请验证身份以访问 DID JWK 私钥',
+    });
+    if (!stored) throw new Error('DID JWK 私钥不存在');
+    return privateSeedToJwk(base64UrlToBytes(stored));
   }
 
   private _buildDocument(

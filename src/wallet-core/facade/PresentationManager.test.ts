@@ -1,4 +1,5 @@
 import type { ProtocolContext } from '@/wallet-core/types/contracts';
+import { useDocumentKeyStore } from '@/wallet-core/domain/DocumentKeyStore';
 import { PresentationManager } from './PresentationManager';
 
 jest.mock('@/wallet-core/protocol/oid4vp/Oid4vpHandler', () => ({
@@ -36,6 +37,7 @@ describe('PresentationManager', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    useDocumentKeyStore.setState({ bindings: {} });
   });
 
   it('presentation_request 时返回 presentation_requested session', async () => {
@@ -126,6 +128,88 @@ describe('PresentationManager', () => {
       protocolResult: {
         type: 'error',
         message: 'presentation failed',
+      },
+    });
+  });
+
+  it('mdoc 请求会把文档级展示能力带入 presentation session', async () => {
+    useDocumentKeyStore.setState({
+      bindings: {
+        'mdoc-1': {
+          documentId: 'mdoc-1',
+          format: 'mso_mdoc',
+          docType: 'eu.europa.ec.eudi.pid.1',
+          bindingType: 'document-device-key',
+          strategy: 'linked-did-jwk',
+          keyRef: 'document:mdoc-1:did:jwk:test#0',
+          did: 'did:jwk:test',
+          keyId: 'did:jwk:test#0',
+          algorithm: 'ES256',
+          state: 'ready',
+          updatedAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    const manager = new PresentationManager();
+    const handler = {
+      handle: jest.fn().mockResolvedValue({
+        type: 'presentation_request',
+        request: {
+          verifier: 'verifier.example',
+          presentationId: 'vp-mdoc',
+          matches: [
+            {
+              credential: {
+                ...credential,
+                id: 'mdoc-1',
+                type: ['VerifiableCredential', 'eu.europa.ec.eudi.pid.1'],
+                visual: {
+                  ...credential.visual,
+                  description: 'eu.europa.ec.eudi.pid.1',
+                },
+                _format: 'mso_mdoc',
+              },
+              disclosedClaims: ['eu.europa.ec.eudi.pid.1.place_of_birth'],
+              queryId: 'q-mdoc',
+            },
+          ],
+        },
+      }),
+    };
+
+    const result = await manager.handleWithHandler(
+      handler as never,
+      'openid4vp://?request=1',
+      {} as ProtocolContext
+    );
+
+    expect(result.kind).toBe('presentation_requested');
+    if (result.kind === 'presentation_requested') {
+      expect(result.session.matches[0].document.presentationBinding.type).toBe(
+        'document-device-key'
+      );
+      expect(
+        result.session.matches[0].document.presentationCapabilities.remoteOid4vp
+      ).toBe('supported');
+    }
+  });
+
+  it('mdoc 不可展示时 submit 返回 failure operation', async () => {
+    const manager = new PresentationManager();
+    oid4vpHandler.submitPresentation.mockResolvedValue({
+      type: 'error',
+      message: 'This mdoc must be rebound or reissued on this device.',
+    });
+
+    const result = await manager.submit('vp-mdoc', {} as ProtocolContext);
+
+    expect(result).toEqual({
+      kind: 'failure',
+      message: 'This mdoc must be rebound or reissued on this device.',
+      protocolResult: {
+        type: 'error',
+        message: 'This mdoc must be rebound or reissued on this device.',
       },
     });
   });

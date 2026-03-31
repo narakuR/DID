@@ -1,5 +1,6 @@
 import { clearDocuments, syncDocuments, useDocumentStore } from './DocumentStore';
 import { documentManager } from './DocumentManager';
+import { useDocumentKeyStore } from './DocumentKeyStore';
 
 describe('DocumentStore / DocumentManager', () => {
   const credential = {
@@ -26,6 +27,7 @@ describe('DocumentStore / DocumentManager', () => {
 
   beforeEach(() => {
     clearDocuments();
+    useDocumentKeyStore.setState({ bindings: {} });
   });
 
   it('syncDocuments 将 credential 映射为 WalletDocument', () => {
@@ -62,6 +64,46 @@ describe('DocumentStore / DocumentManager', () => {
     expect(credentials).toHaveLength(1);
     expect(credentials[0]).toBe(credential);
     expect(resolved).toBe(credential);
+  });
+
+  it('为 mdoc 文档返回文档级展示能力与状态', () => {
+    useDocumentKeyStore.setState({
+      bindings: {
+        'mdoc-1': {
+          documentId: 'mdoc-1',
+          format: 'mso_mdoc',
+          docType: 'eu.europa.ec.eudi.pid.1',
+          bindingType: 'document-device-key',
+          strategy: 'linked-did-jwk',
+          keyRef: 'document:mdoc-1:did:jwk:test#0',
+          did: 'did:jwk:test',
+          keyId: 'did:jwk:test#0',
+          algorithm: 'ES256',
+          state: 'ready',
+          updatedAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    syncDocuments([
+      {
+        ...credential,
+        id: 'mdoc-1',
+        type: ['VerifiableCredential', 'eu.europa.ec.eudi.pid.1'],
+        visual: {
+          ...credential.visual,
+          description: 'eu.europa.ec.eudi.pid.1',
+        },
+        _format: 'mso_mdoc',
+      } as never,
+    ]);
+
+    const document = documentManager.getDocument('mdoc-1');
+
+    expect(document?.presentationBinding.type).toBe('document-device-key');
+    expect(document?.presentationCapabilities.remoteOid4vp).toBe('supported');
+    expect(documentManager.canPresentRemotely('mdoc-1')).toBe(true);
+    expect(documentManager.getPresentationState('mdoc-1')).toBe('ready');
   });
 
   it('clearDocuments 清空文档列表', () => {

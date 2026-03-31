@@ -1,8 +1,10 @@
 import { credentialRepository } from '@/services/credentialRepository';
 import { INTEGRATION_CONFIG } from '@/config/integration';
+import { getDocumentKeyBinding } from '@/wallet-core/domain/DocumentKeyStore';
 import { normalizeVerifierContextUrl } from '@/wallet-core/transport/urlResolver';
 import type { ProtocolContext, ProtocolResult } from '@/wallet-core/types/contracts';
 import { buildKeyBindingJwt } from './keyBindingBuilder';
+import { buildMdocRemotePresentation } from './mdocRemotePresentation';
 import {
   deletePresentationRequest,
   getPresentationRequest,
@@ -39,6 +41,9 @@ export async function submitPresentation(
 
   try {
     const vpToken: Record<string, string[]> = {};
+    const includesMdoc = stored.matched.some(
+      (match) => match.credential._format === 'mso_mdoc'
+    );
 
     for (const match of stored.matched) {
       const repoHit = credentialRepository.getById(match.credential.id);
@@ -51,11 +56,16 @@ export async function submitPresentation(
       }
 
       if (match.credential._format === 'mso_mdoc') {
-        return {
-          type: 'error',
-          message:
-            '当前版本暂不支持 mso_mdoc 通过 OID4VP 出示。已支持 mdoc 领取，但 mdoc 出示仍需实现 DeviceResponse 生成。',
-        };
+        const presentationEntry = await buildMdocRemotePresentation({
+          credential: match.credential,
+          rawCredential,
+          binding: getDocumentKeyBinding(match.credential.id),
+          requestObject: stored.requestObject,
+          requestedClaims: match.requestedClaims,
+          docType: match.docType,
+        });
+        vpToken[match.queryId] = [presentationEntry];
+        continue;
       }
 
       let presentationEntry = rawCredential;
@@ -98,7 +108,11 @@ export async function submitPresentation(
       const body = await submitRes.text().catch(() => '');
       return {
         type: 'error',
-        message: `VP submission failed (${submitRes.status})${body ? `: ${body}` : ''}`,
+        message: includesMdoc
+          ? `Verifier rejected the mdoc presentation response (${submitRes.status})${
+              body ? `: ${body}` : ''
+            }`
+          : `VP submission failed (${submitRes.status})${body ? `: ${body}` : ''}`,
       };
     }
 
@@ -115,6 +129,13 @@ export async function submitPresentation(
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    if (
+      message.startsWith('This mdoc') ||
+      message.startsWith('Verifier request is missing') ||
+      message.startsWith('Remote mdoc presentation requires')
+    ) {
+      return { type: 'error', message };
+    }
     return { type: 'error', message: `VP submission error: ${message}` };
   }
 }

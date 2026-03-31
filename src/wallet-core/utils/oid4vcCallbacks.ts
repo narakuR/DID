@@ -1,4 +1,5 @@
 import * as ExpoCrypto from 'expo-crypto';
+import { p256 } from '@noble/curves/nist.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { Buffer } from 'buffer';
 import type {
@@ -96,6 +97,24 @@ const signJwtCallback = async (
     signerJwk: Jwk;
   }> => {
     if (jwtSigner.method === 'jwk') {
+      const customJwkSigner = jwtSigner as JwtSigner & {
+        publicJwk: Jwk;
+        privateJwk?: Jwk & { d?: string };
+        keyId?: string;
+        did?: string;
+      };
+      if (customJwkSigner.privateJwk?.d) {
+        return {
+          keyId: customJwkSigner.keyId ?? 'document-device-key#0',
+          did: customJwkSigner.did ?? 'document-device-key',
+          sign: async (input) => {
+            const privateSeed = base64UrlToBytes(customJwkSigner.privateJwk!.d!);
+            return p256.sign(input, privateSeed, { lowS: true });
+          },
+          signerJwk: customJwkSigner.publicJwk,
+        };
+      }
+
       const meta = await didJwkProvider.getStoredMetadata();
       if (!meta) throw new Error('No ES256 DID found. Please generate a DID:JWK first.');
       return {

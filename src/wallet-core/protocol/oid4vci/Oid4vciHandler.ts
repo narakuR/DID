@@ -99,7 +99,8 @@ export class Oid4vciHandler implements IProtocolHandler {
         credentialOffer.credential_issuer,
         credentialConfigurationId,
         issuerMetadata,
-        credentialResponse
+        credentialResponse,
+        proof.pendingDocumentKeyId
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

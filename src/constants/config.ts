@@ -33,6 +33,8 @@ export const CONFIG = {
 export const STORAGE_KEYS = {
   CREDENTIALS: '@did_wallet/credentials',
   STORED_CREDENTIALS: '@did_wallet/stored_credentials',
+  DOCUMENT_KEY_BINDINGS: '@did_wallet/document_key_bindings',
+  PENDING_DOCUMENT_KEY_BINDINGS: '@did_wallet/pending_document_key_bindings',
   PENDING_OID4VCI_AUTH: '@did_wallet/pending_oid4vci_auth',
   AUTH_STATE: '@did_wallet/auth_state',
   SETTINGS: '@did_wallet/settings',
@@ -47,4 +49,5 @@ export const SECURE_STORE_KEYS = {
   PIN: 'did_wallet_pin',
   CLOUD_KEY: 'did_wallet_cloud_key',
   DID_PRIVATE_KEY_PREFIX: 'did_wallet_did_pk_',
+  DOCUMENT_PRIVATE_KEY_PREFIX: 'did_wallet_document_pk_',
 } as const;

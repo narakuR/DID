@@ -4,6 +4,16 @@ module.exports = {
   testEnvironment: 'node',
   roots: ['<rootDir>/src'],
   testMatch: ['**/*.test.ts'],
+  transform: {
+    '^.+\\.(ts|tsx|js|jsx|mjs)$': [
+      'ts-jest',
+      {
+        tsconfig: {
+          allowJs: true,
+        },
+      },
+    ],
+  },
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
@@ -11,4 +21,7 @@ module.exports = {
   setupFiles: ['<rootDir>/jest.setup.ts'],
   watchman: false,
   testPathIgnorePatterns: ['/node_modules/'],
+  transformIgnorePatterns: [
+    'node_modules/(?!(expo-secure-store|expo-crypto|@noble/curves|@noble/hashes|@owf/mdoc|cbor-x)/)',
+  ],
 };

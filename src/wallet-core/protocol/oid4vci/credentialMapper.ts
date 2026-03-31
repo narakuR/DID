@@ -7,6 +7,7 @@ import { normalizeIssuerContextUrl } from '@/wallet-core/transport/urlResolver';
 import { oid4vciCallbacks } from './client';
 import type { IssuerCredentialResponse } from './types';
 import { resolveCredentialConfiguration } from './offerResolver';
+import { finalizePendingMdocBinding } from '@/wallet-core/domain/DocumentKeyStore';
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -351,7 +352,8 @@ export async function toCredentialReceivedResult(
   credentialIssuer: string,
   credentialConfigurationId: string,
   issuerMetadata: unknown,
-  credentialResponse: IssuerCredentialResponse
+  credentialResponse: IssuerCredentialResponse,
+  pendingDocumentKeyId?: string
 ): Promise<ProtocolResult> {
   const resolvedCredentialResponse = await resolveDeferredCredentialResponse({
     credentialIssuer,
@@ -375,6 +377,10 @@ export async function toCredentialReceivedResult(
   const displayModel = handler.toDisplayModel(parsedCredential);
   displayModel._raw = rawCredential;
   displayModel._format = parsedCredential.format;
+
+  if (pendingDocumentKeyId) {
+    await finalizePendingMdocBinding(pendingDocumentKeyId, [displayModel]);
+  }
 
   return { type: 'credential_received', credentials: [displayModel] };
 }

@@ -3,3 +3,13 @@ jest.mock('react-native', () => ({
     OS: 'ios',
   },
 }));
+
+jest.mock('expo-secure-store', () => ({
+  getItemAsync: jest.fn(),
+  setItemAsync: jest.fn(),
+  deleteItemAsync: jest.fn(),
+}));
+
+jest.mock('expo-crypto', () => ({
+  getRandomBytes: jest.fn((length: number) => new Uint8Array(length)),
+}));

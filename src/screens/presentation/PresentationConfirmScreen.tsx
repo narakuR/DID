@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,10 @@ import { useTheme } from '@/hooks/useTheme';
 import { COLORS } from '@/constants/colors';
 import CredentialCard from '@/components/CredentialCard';
 import { walletProtocolService } from '@/services/walletProtocolService';
+import {
+  getPresentationStateLabel,
+  getPresentationSupportLabel,
+} from '@/wallet-core/domain/presentationLabels';
 
 type Route = RouteProp<RootStackParamList, 'PresentationConfirm'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -30,8 +34,30 @@ export default function PresentationConfirmScreen() {
 
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+  const blockingReason = useMemo(() => {
+    for (const match of session.matches) {
+      if (match.document.presentationCapabilities.remoteOid4vp !== 'supported') {
+        return (
+          match.document.presentationCapabilities.reasons[0] ||
+          `${match.document.title} is not available for remote presentation.`
+        );
+      }
+      if (match.document.presentationState !== 'ready') {
+        return (
+          match.document.documentKeyBinding?.reason ||
+          `${match.document.title} is currently ${getPresentationStateLabel(match.document.presentationState).toLowerCase()}.`
+        );
+      }
+    }
+    return null;
+  }, [session.matches]);
 
   async function handleConfirm() {
+    if (blockingReason) {
+      Alert.alert('Presentation unavailable', blockingReason);
+      return;
+    }
+
     setLoading(true);
     const result = await walletProtocolService.submitPresentation(session.presentationId);
     setLoading(false);
@@ -97,6 +123,28 @@ export default function PresentationConfirmScreen() {
                 ))}
               </View>
             )}
+            <View style={[styles.capabilityBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.claimsTitle, { color: colors.textSecondary }]}>Presentation capability</Text>
+              <Text style={[styles.capabilityText, { color: colors.text }]}>
+                Remote OID4VP: {getPresentationSupportLabel(match.document.presentationCapabilities.remoteOid4vp)}
+              </Text>
+              <Text style={[styles.capabilityText, { color: colors.text }]}>
+                Proximity: {getPresentationSupportLabel(match.document.presentationCapabilities.proximity)}
+              </Text>
+              <Text style={[styles.capabilityText, { color: colors.text }]}>
+                Binding: {match.document.presentationBinding.type === 'document-device-key' ? 'Document device key' : 'Holder key'}
+              </Text>
+              {match.document.presentationState !== 'ready' ? (
+                <Text style={[styles.capabilityWarningText, { color: '#92400E' }]}>
+                  {getPresentationStateLabel(match.document.presentationState)}
+                </Text>
+              ) : null}
+              {match.document.presentationCapabilities.reasons[0] ? (
+                <Text style={[styles.capabilityReasonText, { color: colors.textSecondary }]}>
+                  {match.document.presentationCapabilities.reasons[0]}
+                </Text>
+              ) : null}
+            </View>
           </View>
         ))}
       </ScrollView>
@@ -119,7 +167,7 @@ export default function PresentationConfirmScreen() {
             <TouchableOpacity
               style={[styles.shareBtn, { opacity: loading ? 0.7 : 1 }]}
               onPress={handleConfirm}
-              disabled={loading}
+              disabled={loading || Boolean(blockingReason)}
             >
               {loading ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Text style={styles.shareBtnText}>Share</Text>}
             </TouchableOpacity>
@@ -170,9 +218,18 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 6,
   },
+  capabilityBox: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 14,
+    gap: 4,
+  },
   claimsTitle: { fontSize: 12, marginBottom: 4 },
   claimRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   claimName: { fontSize: 13 },
+  capabilityText: { fontSize: 13 },
+  capabilityWarningText: { fontSize: 13, fontWeight: '700', marginTop: 2 },
+  capabilityReasonText: { fontSize: 12, marginTop: 4 },
   footer: {
     flexDirection: 'row',
     gap: 12,

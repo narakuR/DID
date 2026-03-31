@@ -11,6 +11,10 @@ jest.mock('./keyBindingBuilder', () => ({
   buildKeyBindingJwt: jest.fn(),
 }));
 
+jest.mock('./mdocRemotePresentation', () => ({
+  buildMdocRemotePresentation: jest.fn(),
+}));
+
 jest.mock('./presentationSessionStore', () => ({
   getPresentationRequest: jest.fn(),
   deletePresentationRequest: jest.fn(),
@@ -23,6 +27,9 @@ const { credentialRepository } = jest.requireMock('@/services/credentialReposito
 };
 const { buildKeyBindingJwt } = jest.requireMock('./keyBindingBuilder') as {
   buildKeyBindingJwt: jest.Mock;
+};
+const { buildMdocRemotePresentation } = jest.requireMock('./mdocRemotePresentation') as {
+  buildMdocRemotePresentation: jest.Mock;
 };
 const sessionStore = jest.requireMock('./presentationSessionStore') as {
   getPresentationRequest: jest.Mock;
@@ -150,6 +157,59 @@ describe('presentationSubmitter', () => {
     });
   });
 
+  it('对 mso_mdoc 使用文档级 runtime 构造 DeviceResponse 后提交', async () => {
+    sessionStore.getPresentationRequest.mockReturnValue({
+      requestObject: {
+        response_uri: 'https://verifier.example/direct_post',
+        state: 'state-1',
+        nonce: 'nonce-1',
+        client_id: 'https://verifier.example',
+      },
+      matched: [
+        {
+          credential: {
+            id: 'cred-mdoc',
+            _format: 'mso_mdoc',
+          },
+          disclosedClaims: ['eu.europa.ec.eudi.pid.1.place_of_birth'],
+          requestedClaims: [{ path: ['eu.europa.ec.eudi.pid.1', 'place_of_birth'] }],
+          format: 'mso_mdoc',
+          docType: 'eu.europa.ec.eudi.pid.1',
+          queryId: 'q-mdoc',
+        },
+      ],
+      verifier: 'verifier.example',
+    });
+    credentialRepository.getById.mockReturnValue({
+      raw: 'raw-mdoc',
+    });
+    buildMdocRemotePresentation.mockResolvedValue('encoded-device-response');
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      headers: {
+        get: () => 'application/json',
+      },
+      json: async () => ({ verified: true }),
+    });
+
+    const result = await submitPresentation('vp-mdoc', ctx);
+
+    expect(buildMdocRemotePresentation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rawCredential: 'raw-mdoc',
+        requestedClaims: [{ path: ['eu.europa.ec.eudi.pid.1', 'place_of_birth'] }],
+        docType: 'eu.europa.ec.eudi.pid.1',
+      })
+    );
+    const body = (global.fetch as jest.Mock).mock.calls[0][1].body as string;
+    expect(decodeURIComponent(body)).toContain('"q-mdoc":["encoded-device-response"]');
+    expect(result).toEqual({
+      type: 'presentation_sent',
+      verifier: 'verifier.example',
+      verificationResult: { verified: true },
+    });
+  });
+
   it('在缺少 raw credential 时返回错误', async () => {
     sessionStore.getPresentationRequest.mockReturnValue({
       requestObject: {
@@ -199,6 +259,7 @@ describe('presentationSubmitter', () => {
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: false,
       status: 400,
+      text: async () => '',
     });
 
     const result = await submitPresentation('vp-1', ctx);

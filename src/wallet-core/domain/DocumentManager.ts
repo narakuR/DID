@@ -1,5 +1,9 @@
 import { useDocumentStore } from './DocumentStore';
-import type { WalletDocument } from './models';
+import type {
+  WalletDocument,
+  WalletDocumentPresentationCapabilities,
+  WalletDocumentPresentationState,
+} from './models';
 import type { VerifiableCredential } from '@/types';
 
 export class DocumentManager {
@@ -17,6 +21,22 @@ export class DocumentManager {
 
   getCredential(documentId: string): VerifiableCredential | undefined {
     return this.getDocument(documentId)?.credential;
+  }
+
+  getPresentationCapabilities(
+    documentId: string
+  ): WalletDocumentPresentationCapabilities | undefined {
+    return this.getDocument(documentId)?.presentationCapabilities;
+  }
+
+  getPresentationState(
+    documentId: string
+  ): WalletDocumentPresentationState | undefined {
+    return this.getDocument(documentId)?.presentationState;
+  }
+
+  canPresentRemotely(documentId: string): boolean {
+    return this.getDocument(documentId)?.presentationCapabilities.remoteOid4vp === 'supported';
   }
 }
 

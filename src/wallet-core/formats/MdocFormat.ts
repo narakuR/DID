@@ -67,7 +67,7 @@ function hashString(value: string): string {
   return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
-function normalizeOid4vciMdocEncoding(raw: string): string {
+export function normalizeOid4vciMdocEncoding(raw: string): string {
   const trimmed = raw.trim();
   const withoutPrefix = trimmed.replace(
     /^data:application\/(?:oauth-authz-req\+jwt|[^;,\s]+)?;base64,/i,
@@ -88,7 +88,7 @@ function normalizeOid4vciMdocEncoding(raw: string): string {
   return withoutPrefix;
 }
 
-function decodeCompactMdocBytes(encoded: string): Uint8Array {
+export function decodeCompactMdocBytes(encoded: string): Uint8Array {
   const normalized = normalizeOid4vciMdocEncoding(encoded);
   const base64 = normalized.replace(/-/g, '+').replace(/_/g, '/');
   const padded = base64 + '='.repeat((4 - (base64.length % 4 || 4)) % 4);
@@ -130,7 +130,7 @@ function summarizeCborValue(value: unknown): string {
   return String(value);
 }
 
-function summarizeCborBytes(bytes: Uint8Array): string {
+export function summarizeCborBytes(bytes: Uint8Array): string {
   const hexPreview = Buffer.from(bytes)
     .toString('hex')
     .slice(0, 64);
@@ -221,7 +221,7 @@ function toEncodedStructureMap(decoded: unknown): Map<unknown, unknown> | undefi
   return normalized;
 }
 
-function buildIssuerSignedFromDecodedCbor(decoded: unknown): IssuerSigned {
+export function buildIssuerSignedFromDecodedCbor(decoded: unknown): IssuerSigned {
   const root = normalizeMdocEncodedStructure(decoded);
   if (!(root instanceof Map)) {
     throw new Error('Decoded CBOR root is not a map-like structure');
@@ -296,79 +296,15 @@ export class MdocFormat implements ICredentialFormat {
   readonly name = 'mso_mdoc' as const;
 
   async parse(raw: string): Promise<ParsedCredential> {
-    const trimmed = raw.trim();
     let issuerSigned: IssuerSigned;
-    let docType: string | undefined;
-
-    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-      try {
-        const decoded = JSON.parse(trimmed) as unknown;
-        issuerSigned = buildIssuerSignedFromDecodedCbor(decoded);
-        docType = issuerSigned.issuerAuth.mobileSecurityObject.docType;
-      } catch (jsonError) {
-        const message = jsonError instanceof Error ? jsonError.message : String(jsonError);
-        throw new Error(`Mdoc JSON decode failed. ${message}`);
-      }
-    } else {
-      const encoded = normalizeOid4vciMdocEncoding(raw);
-
-      try {
-        issuerSigned = IssuerSigned.fromEncodedForOid4Vci(encoded);
-        docType = issuerSigned.issuerAuth.mobileSecurityObject.docType;
-      } catch (error) {
-        const bytes = decodeCompactMdocBytes(encoded);
-      const rawSummary = summarizeCborBytes(bytes);
-      let decoded: unknown;
-      let decodedError: unknown = null;
-      try {
-        decoded = mdocCborDecode(bytes, { unwrapTopLevelDataItem: false });
-      } catch (decodeError) {
-        decodedError = decodeError;
-      }
-
-      try {
-        if (decodedError) {
-          throw decodedError;
-        }
-        const encodedStructure = toEncodedStructureMap(decoded);
-        if (!encodedStructure) {
-          throw new Error('Decoded CBOR root is not a map-like structure');
-        }
-        issuerSigned = IssuerSigned.fromEncodedStructure(encodedStructure);
-        docType = issuerSigned.issuerAuth.mobileSecurityObject.docType;
-      } catch (issuerSignedStructureError) {
-        try {
-          if (decodedError) {
-            throw decodedError;
-          }
-          issuerSigned = buildIssuerSignedFromDecodedCbor(decoded);
-          docType = issuerSigned.issuerAuth.mobileSecurityObject.docType;
-        } catch (decodedIssuerSignedError) {
-          try {
-            const document = Document.decode(bytes);
-            issuerSigned = document.issuerSigned;
-            docType = document.docType;
-          } catch (documentError) {
-            const issuerSignedMessage =
-              error instanceof Error ? error.message : String(error);
-            const issuerSignedStructureMessage =
-              issuerSignedStructureError instanceof Error
-                ? issuerSignedStructureError.message
-                : String(issuerSignedStructureError);
-            const decodedIssuerSignedMessage =
-              decodedIssuerSignedError instanceof Error
-                ? decodedIssuerSignedError.message
-                : String(decodedIssuerSignedError);
-            const documentMessage =
-              documentError instanceof Error ? documentError.message : String(documentError);
-            throw new Error(
-              `Mdoc decode failed. issuerSigned=${issuerSignedMessage}; issuerSignedStructure=${issuerSignedStructureMessage}; decodedIssuerSigned=${decodedIssuerSignedMessage}; document=${documentMessage}; cbor=${rawSummary}`
-            );
-          }
-        }
-      }
+    try {
+      issuerSigned = parseIssuerSignedFromRawMdoc(raw);
+    } catch (parseError) {
+      const message = parseError instanceof Error ? parseError.message : String(parseError);
+      throw new Error(message.startsWith('Mdoc') ? message : `Mdoc JSON decode failed. ${message}`);
     }
-    }
+
+    let docType: string | undefined = issuerSigned.issuerAuth.mobileSecurityObject.docType;
 
     const mso = issuerSigned.issuerAuth.mobileSecurityObject;
     docType = docType ?? mso.docType;
@@ -431,5 +367,68 @@ export class MdocFormat implements ICredentialFormat {
         gradientKey: display.gradientKey,
       },
     };
+  }
+}
+
+export function parseIssuerSignedFromRawMdoc(raw: string): IssuerSigned {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    const decoded = JSON.parse(trimmed) as unknown;
+    return buildIssuerSignedFromDecodedCbor(decoded);
+  }
+
+  const encoded = normalizeOid4vciMdocEncoding(raw);
+
+  try {
+    return IssuerSigned.fromEncodedForOid4Vci(encoded);
+  } catch (error) {
+    const bytes = decodeCompactMdocBytes(encoded);
+    const rawSummary = summarizeCborBytes(bytes);
+    let decoded: unknown;
+    let decodedError: unknown = null;
+
+    try {
+      decoded = mdocCborDecode(bytes, { unwrapTopLevelDataItem: false });
+    } catch (decodeError) {
+      decodedError = decodeError;
+    }
+
+    try {
+      if (decodedError) {
+        throw decodedError;
+      }
+      const encodedStructure = toEncodedStructureMap(decoded);
+      if (!encodedStructure) {
+        throw new Error('Decoded CBOR root is not a map-like structure');
+      }
+      return IssuerSigned.fromEncodedStructure(encodedStructure);
+    } catch (issuerSignedStructureError) {
+      try {
+        if (decodedError) {
+          throw decodedError;
+        }
+        return buildIssuerSignedFromDecodedCbor(decoded);
+      } catch (decodedIssuerSignedError) {
+        try {
+          return Document.decode(bytes).issuerSigned;
+        } catch (documentError) {
+          const issuerSignedMessage =
+            error instanceof Error ? error.message : String(error);
+          const issuerSignedStructureMessage =
+            issuerSignedStructureError instanceof Error
+              ? issuerSignedStructureError.message
+              : String(issuerSignedStructureError);
+          const decodedIssuerSignedMessage =
+            decodedIssuerSignedError instanceof Error
+              ? decodedIssuerSignedError.message
+              : String(decodedIssuerSignedError);
+          const documentMessage =
+            documentError instanceof Error ? documentError.message : String(documentError);
+          throw new Error(
+            `Mdoc decode failed. issuerSigned=${issuerSignedMessage}; issuerSignedStructure=${issuerSignedStructureMessage}; decodedIssuerSigned=${decodedIssuerSignedMessage}; document=${documentMessage}; cbor=${rawSummary}`
+          );
+        }
+      }
+    }
   }
 }

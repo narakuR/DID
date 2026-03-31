@@ -4,6 +4,11 @@ import { activityLogService } from '@/services/activityLogService';
 import { STORAGE_KEYS } from '@/constants/config';
 import { VerifiableCredential } from '@/types';
 import { clearDocuments, syncDocuments } from '@/wallet-core/domain/DocumentStore';
+import {
+  clearDocumentKeyBindings,
+  ensureDocumentBindings,
+  hydrateDocumentKeyBindings,
+} from '@/wallet-core/domain/DocumentKeyStore';
 
 interface WalletWriteState {
   _credentials: VerifiableCredential[];
@@ -18,6 +23,7 @@ interface WalletWriteState {
 }
 
 async function persist(credentials: VerifiableCredential[]) {
+  await ensureDocumentBindings(credentials);
   await storageService.setItem(STORAGE_KEYS.CREDENTIALS, credentials);
   syncDocuments(credentials);
 }
@@ -62,6 +68,7 @@ export const useWalletWriteStore = create<WalletWriteState>((set, get) => ({
   clearWallet: async () => {
     await storageService.removeItem(STORAGE_KEYS.CREDENTIALS);
     await activityLogService.clear();
+    await clearDocumentKeyBindings();
     clearDocuments();
     set({ _credentials: [] });
   },
@@ -72,6 +79,8 @@ export const useWalletWriteStore = create<WalletWriteState>((set, get) => ({
     if ((saved?.length ?? 0) !== persistedCredentials.length) {
       await storageService.setItem(STORAGE_KEYS.CREDENTIALS, persistedCredentials);
     }
+    await hydrateDocumentKeyBindings();
+    await ensureDocumentBindings(persistedCredentials);
     syncDocuments(persistedCredentials);
     set({
       _credentials: persistedCredentials,
