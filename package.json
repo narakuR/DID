@@ -12,6 +12,8 @@
     "test": "jest --runInBand"
   },
   "dependencies": {
+    "@digitalbazaar/ed25519-verification-key-2020": "^4.2.0",
+    "@digitalcredentials/did-method-key": "^3.0.0",
     "@expo/vector-icons": "^15.0.3",
     "@noble/curves": "^2.0.1",
     "@noble/hashes": "^2.0.1",
@@ -28,6 +30,7 @@
     "@sd-jwt/present": "^0.19.0",
     "babel-plugin-module-resolver": "^5.0.3",
     "dcql": "^3.0.0",
+    "did-resolver": "^4.1.0",
     "expo": "~54.0.33",
     "expo-build-properties": "~1.0.10",
     "expo-camera": "~17.0.10",
@@ -68,6 +71,7 @@
     "react-native-svg": "15.12.1",
     "react-native-web": "~0.21.0",
     "react-native-worklets": "0.5.1",
+    "web-did-resolver": "^2.0.32",
     "zustand": "^5.0.12"
   },
   "devDependencies": {

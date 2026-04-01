@@ -59,7 +59,11 @@ function getMdocContext(): Pick<MdocContext, 'crypto' | 'cose'> {
             return false;
           }
           const publicKey = new Uint8Array([0x04, ...publicX, ...publicY]);
-          return p256.verify(sign1.signature, sign1.toBeSigned, publicKey);
+          const signature =
+            sign1.signature instanceof Uint8Array
+              ? sign1.signature
+              : new Uint8Array(sign1.signature as ArrayLike<number>);
+          return p256.verify(signature, sign1.toBeSigned, publicKey);
         },
       },
       mac0: {

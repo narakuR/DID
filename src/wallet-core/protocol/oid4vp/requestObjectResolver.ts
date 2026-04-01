@@ -1,5 +1,5 @@
 import { parseJwtUnsafe } from '@/wallet-core/utils/jwtUtils';
-import { normalizeVerifierContextUrl, normalizeVerifierPayload } from '@/wallet-core/transport/urlResolver';
+import { normalizeVerifierContextUrl } from '@/wallet-core/transport/urlResolver';
 import type { RequestObject } from './types';
 
 const REQUEST_OBJECT_MEDIA_TYPE = 'application/oauth-authz-req+jwt';
@@ -107,5 +107,7 @@ export async function fetchRequestObjectJwt(
 
 export function parseRequestObjectJwt(jwt: string): RequestObject {
   const { payload } = parseJwtUnsafe(jwt.trim());
-  return normalizeVerifierPayload(payload as RequestObject);
+  // Keep cryptographic request object fields canonical.
+  // Transport URL rewriting should happen only at actual HTTP call sites.
+  return payload as RequestObject;
 }

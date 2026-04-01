@@ -5,6 +5,7 @@ import type {
   DIDProviderResult,
   JwsSigner,
 } from '@/wallet-core/types/did';
+import { resolveDidWebDocument } from '@/wallet-core/did/didWebAdapter';
 
 export class DidWebProvider implements IDIDProvider {
   readonly method = 'did:web';
@@ -14,16 +15,7 @@ export class DidWebProvider implements IDIDProvider {
   }
 
   async resolve(did: string): Promise<DIDDocument> {
-    const url = this._didToUrl(did);
-    const resp = await fetch(url);
-    if (!resp.ok) {
-      throw new Error(`Failed to fetch did:web document from ${url}: ${resp.status}`);
-    }
-    const doc = (await resp.json()) as DIDDocument;
-    if (!doc.id || !doc.verificationMethod) {
-      throw new Error(`Invalid DID document at ${url}`);
-    }
-    return doc;
+    return resolveDidWebDocument(did, new Date().toISOString());
   }
 
   async sign(_payload: Uint8Array, _keyId: string): Promise<Uint8Array> {
@@ -59,17 +51,6 @@ export class DidWebProvider implements IDIDProvider {
 
   asJwsSigner(_keyId: string): JwsSigner {
     throw new Error('did:web signing is not supported by the wallet');
-  }
-
-  private _didToUrl(did: string): string {
-    const suffix = did.replace('did:web:', '');
-    const [host, ...pathParts] = suffix.split(':');
-    const decodedHost = decodeURIComponent(host);
-    if (pathParts.length === 0) {
-      return `https://${decodedHost}/.well-known/did.json`;
-    }
-    const path = pathParts.map(decodeURIComponent).join('/');
-    return `https://${decodedHost}/${path}/did.json`;
   }
 }
 

@@ -1,3 +1,5 @@
+import '@/polyfills/crypto';
+
 jest.mock('react-native', () => ({
   Platform: {
     OS: 'ios',

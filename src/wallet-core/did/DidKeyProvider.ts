@@ -1,3 +1,4 @@
+import '@/polyfills/crypto';
 import * as SecureStore from 'expo-secure-store';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -14,54 +15,11 @@ import type {
   DIDProviderResult,
   JwsSigner,
 } from '@/wallet-core/types/did';
-
-const ED25519_MULTICODEC_PREFIX = new Uint8Array([0xed, 0x01]);
-const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-
-function encodeBase58(bytes: Uint8Array): string {
-  if (bytes.length === 0) return '';
-  const digits = [0];
-  for (const byte of bytes) {
-    let carry = byte;
-    for (let i = 0; i < digits.length; i++) {
-      const val = digits[i] * 256 + carry;
-      digits[i] = val % 58;
-      carry = Math.floor(val / 58);
-    }
-    while (carry > 0) {
-      digits.push(carry % 58);
-      carry = Math.floor(carry / 58);
-    }
-  }
-  let zeros = 0;
-  while (zeros < bytes.length && bytes[zeros] === 0) zeros++;
-  let out = '1'.repeat(zeros);
-  for (let i = digits.length - 1; i >= 0; i--) out += BASE58_ALPHABET[digits[i]];
-  return out;
-}
-
-function decodeBase58(s: string): Uint8Array {
-  const bytes = [0];
-  for (const char of s) {
-    const val = BASE58_ALPHABET.indexOf(char);
-    if (val < 0) throw new Error(`Invalid base58 character: ${char}`);
-    let carry = val;
-    for (let i = 0; i < bytes.length; i++) {
-      carry += bytes[i] * 58;
-      bytes[i] = carry & 0xff;
-      carry >>= 8;
-    }
-    while (carry > 0) {
-      bytes.push(carry & 0xff);
-      carry >>= 8;
-    }
-  }
-  let zeros = 0;
-  while (zeros < s.length && s[zeros] === '1') zeros++;
-  const result = new Uint8Array(zeros + bytes.length);
-  bytes.reverse().forEach((b, i) => (result[zeros + i] = b));
-  return result;
-}
+import {
+  createDidKeyDocument,
+  resolveDidKeyDocument,
+  verifyDidKeySignature,
+} from '@/wallet-core/did/didKeyAdapter';
 
 function bytesToBase64Url(bytes: Uint8Array): string {
   return Buffer.from(bytes)
@@ -82,14 +40,12 @@ export class DidKeyProvider implements IDIDProvider {
 
   async create(_options: DIDCreateOptions = {}): Promise<DIDProviderResult> {
     const seed = ExpoCrypto.getRandomBytes(32);
-    const pubKeyBytes = ed25519.getPublicKey(seed);
-
-    const publicKeyMultibase = `z${encodeBase58(
-      new Uint8Array([...ED25519_MULTICODEC_PREFIX, ...pubKeyBytes])
-    )}`;
-    const did = `did:key:${publicKeyMultibase}`;
-    const keyId = `${did}#${publicKeyMultibase}`;
     const createdAt = new Date().toISOString();
+    const { did, keyId, publicKeyBytes, publicKeyMultibase, didDocument } =
+      await createDidKeyDocument({
+        seed,
+        createdAt,
+      });
 
     await SecureStore.setItemAsync(this._secureKey(keyId), bytesToBase64Url(seed), {
       requireAuthentication: true,
@@ -105,12 +61,11 @@ export class DidKeyProvider implements IDIDProvider {
       registeredAt: createdAt,
       status: 'active',
     };
-    const didDocument = this._buildDocument(metadata, createdAt);
 
     await storageService.setItem(STORAGE_KEYS.DID_METADATA, metadata);
     await storageService.setItem(STORAGE_KEYS.DID_DOCUMENT, didDocument);
 
-    return { did, keyId, publicKeyBytes: pubKeyBytes, metadata, didDocument };
+    return { did, keyId, publicKeyBytes, metadata, didDocument };
   }
 
   async resolve(did: string): Promise<DIDDocument> {
@@ -119,21 +74,10 @@ export class DidKeyProvider implements IDIDProvider {
 
     const storedMeta = await storageService.getItem<DIDMetadata>(STORAGE_KEYS.DID_METADATA);
     if (storedMeta && storedMeta.did === did) {
-      return this._buildDocument(storedMeta, storedMeta.registeredAt);
+      return resolveDidKeyDocument(storedMeta.did, storedMeta.registeredAt);
     }
 
-    const publicKeyMultibase = did.replace('did:key:', '');
-    const keyId = `${did}#${publicKeyMultibase}`;
-    const meta: DIDMetadata = {
-      did,
-      method: 'did:key',
-      algorithm: 'Ed25519',
-      keyId,
-      publicKeyMultibase,
-      registeredAt: new Date().toISOString(),
-      status: 'active',
-    };
-    return this._buildDocument(meta, meta.registeredAt);
+    return resolveDidKeyDocument(did, new Date().toISOString());
   }
 
   async sign(payload: Uint8Array, keyId: string): Promise<Uint8Array> {
@@ -152,9 +96,11 @@ export class DidKeyProvider implements IDIDProvider {
     try {
       const doc = await this.resolve(did);
       const vm = doc.verificationMethod[0];
-      const withPrefix = decodeBase58(vm.publicKeyMultibase.slice(1));
-      const pubKeyBytes = withPrefix.slice(ED25519_MULTICODEC_PREFIX.length);
-      return ed25519.verify(sig, payload, pubKeyBytes);
+      return verifyDidKeySignature({
+        payload,
+        signature: sig,
+        publicKeyMultibase: vm.publicKeyMultibase,
+      });
     } catch {
       return false;
     }
@@ -217,25 +163,6 @@ export class DidKeyProvider implements IDIDProvider {
   private _secureKey(keyId: string): string {
     const encodedKeyId = bytesToBase64Url(Buffer.from(keyId, 'utf8'));
     return `${SECURE_STORE_KEYS.DID_PRIVATE_KEY_PREFIX}${encodedKeyId}`;
-  }
-
-  private _buildDocument(metadata: DIDMetadata, createdAt: string): DIDDocument {
-    return {
-      '@context': ['https://www.w3.org/ns/did/v1'],
-      id: metadata.did,
-      verificationMethod: [
-        {
-          id: metadata.keyId,
-          type: 'Ed25519VerificationKey2020',
-          controller: metadata.did,
-          publicKeyMultibase: metadata.publicKeyMultibase,
-        },
-      ],
-      authentication: [metadata.keyId],
-      assertionMethod: [metadata.keyId],
-      created: createdAt,
-      updated: createdAt,
-    };
   }
 }
 

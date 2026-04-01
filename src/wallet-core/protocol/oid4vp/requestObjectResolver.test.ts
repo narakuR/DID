@@ -67,6 +67,7 @@ describe('requestObjectResolver', () => {
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: false,
       status: 500,
+      text: async () => '',
     });
 
     await expect(

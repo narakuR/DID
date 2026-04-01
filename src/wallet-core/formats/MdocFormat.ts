@@ -67,6 +67,14 @@ function hashString(value: string): string {
   return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
+function bytesToBase64Url(bytes: Uint8Array): string {
+  return Buffer.from(bytes)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
 export function normalizeOid4vciMdocEncoding(raw: string): string {
   const trimmed = raw.trim();
   const withoutPrefix = trimmed.replace(
@@ -431,4 +439,28 @@ export function parseIssuerSignedFromRawMdoc(raw: string): IssuerSigned {
       }
     }
   }
+}
+
+export function extractDevicePublicJwkFromRawMdoc(raw: string):
+  | {
+      kty: 'EC';
+      crv: 'P-256';
+      x: string;
+      y: string;
+    }
+  | null {
+  const issuerSigned = parseIssuerSignedFromRawMdoc(raw);
+  const deviceKey =
+    issuerSigned.issuerAuth.mobileSecurityObject.deviceKeyInfo.deviceKey;
+
+  if (!deviceKey?.x || !deviceKey?.y) {
+    return null;
+  }
+
+  return {
+    kty: 'EC',
+    crv: 'P-256',
+    x: bytesToBase64Url(deviceKey.x),
+    y: bytesToBase64Url(deviceKey.y),
+  };
 }

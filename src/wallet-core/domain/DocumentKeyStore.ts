@@ -7,6 +7,7 @@ import { create } from 'zustand';
 import { STORAGE_KEYS, SECURE_STORE_KEYS } from '@/constants/config';
 import { storageService } from '@/services/storageService';
 import type { DocumentKeyBindingRecord, VerifiableCredential } from '@/types';
+import { extractDevicePublicJwkFromRawMdoc } from '@/wallet-core/formats/MdocFormat';
 
 type P256Jwk = {
   kty: 'EC';
@@ -106,6 +107,10 @@ function privateSeedToJwk(seed: Uint8Array): P256Jwk {
 
 function publicJwkToDid(publicJwk: P256Jwk): string {
   return `did:jwk:${stringToBase64Url(JSON.stringify(publicJwk))}`;
+}
+
+function equalPublicJwk(a: Pick<P256Jwk, 'kty' | 'crv' | 'x' | 'y'>, b: Pick<P256Jwk, 'kty' | 'crv' | 'x' | 'y'>) {
+  return a.kty === b.kty && a.crv === b.crv && a.x === b.x && a.y === b.y;
 }
 
 function inferMdocDocType(credential: VerifiableCredential): string {
@@ -303,6 +308,13 @@ export const useDocumentKeyStore = create<DocumentKeyStoreState>((set, get) => (
         continue;
       }
 
+      const issuedDevicePublicJwk = credential._raw
+        ? extractDevicePublicJwkFromRawMdoc(credential._raw)
+        : null;
+      const issuedKeyMatchesPending =
+        issuedDevicePublicJwk &&
+        equalPublicJwk(issuedDevicePublicJwk, pending.publicJwk);
+
       nextBindings[credential.id] = {
         documentId: credential.id,
         format: 'mso_mdoc',
@@ -312,7 +324,10 @@ export const useDocumentKeyStore = create<DocumentKeyStoreState>((set, get) => (
         keyRef: pending.keyRef,
         keyId: pending.keyId,
         algorithm: 'ES256',
-        state: 'ready',
+        state: issuedKeyMatchesPending ? 'ready' : 'reissuance_required',
+        reason: issuedKeyMatchesPending
+          ? undefined
+          : 'The issued mdoc device key does not match the local document presentation key. Please reissue this credential on this device.',
         updatedAt: now,
       };
     }
